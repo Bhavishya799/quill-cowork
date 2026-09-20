@@ -1,4 +1,7 @@
 """Onyx backend — FastAPI server."""
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
@@ -16,7 +19,12 @@ from providers import list_providers
 
 
 SESSIONS: dict = {}
+# Active model slot (can be changed at runtime via /models/slots/select)
+CURRENT_SLOT = settings.DEFAULT_SLOT
 
+
+class SlotSelectRequest(BaseModel):
+    slot: str  # "fast" | "balanced" | "powerful"
 app = FastAPI(title="Onyx API", version="1.0.0")
 
 app.add_middleware(
@@ -67,11 +75,8 @@ async def status():
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     history = SESSIONS.get(req.session_id, [])
-    reply, tool_calls = await run_agent(req.message, history=history)
-    history.append({"role": "user", "content": req.message})
-    history.append({"role": "assistant", "content": reply})
-    SESSIONS[req.session_id] = history[-20:]
-    return ChatResponse(reply=reply, tool_calls=tool_calls, session_id=req.session_id)
+    slot_model = settings.get_slots().get(CURRENT_SLOT, settings.OLLAMA_MODEL)
+    reply, tool_calls = await run_agent(req.message, history=history, model=slot_model)
 
 
 @app.get("/tools")
@@ -134,7 +139,8 @@ async def websocket_endpoint(ws: WebSocket):
             await ws.send_json({"type": "thinking"})
 
             history = SESSIONS.get(session_id, [])
-            reply, tool_calls = await run_agent(user_msg, history=history)
+            slot_model = settings.get_slots().get(CURRENT_SLOT, settings.OLLAMA_MODEL)
+            reply, tool_calls = await run_agent(user_msg, history=history, model=slot_model)
 
             history.append({"role": "user", "content": user_msg})
             history.append({"role": "assistant", "content": reply})
@@ -162,6 +168,39 @@ async def get_widget(connector_id: str):
         return {"value": "—"}
     result = call_tool(tool_name, {})
     return {"connector": connector_id, "widget": widget, "value": result[:200]}
+    # ============================================================
+# MODEL SLOTS
+# ============================================================
+@app.get("/models/slots")
+async def list_slots():
+    """Return the three model slots and which one is active."""
+    slots = settings.get_slots()
+    return {
+        "slots": slots,
+        "current_slot": CURRENT_SLOT,
+        "current_model": slots.get(CURRENT_SLOT, settings.OLLAMA_MODEL),
+    }
+
+
+@app.post("/models/slots/select")
+async def select_slot(req: SlotSelectRequest):
+    global CURRENT_SLOT
+    slots = settings.get_slots()
+    if req.slot not in slots:
+        return {"ok": False, "error": f"Unknown slot '{req.slot}'. Use: fast, balanced, powerful"}
+    CURRENT_SLOT = req.slot
+    print(f"[Quill] Active slot switched to '{req.slot}' → {slots[req.slot]}")
+    return {"ok": True, "slot": req.slot, "model": slots[req.slot]}
+
+
+@app.get("/models/available")
+async def available_models():
+    """List every model currently installed in Ollama (for advanced users)."""
+    try:
+        provider = get_provider()
+        return {"models": provider.list_models()}
+    except Exception as e:
+        return {"models": [], "error": str(e)}
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host=settings.HOST, port=settings.PORT, reload=True)

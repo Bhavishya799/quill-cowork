@@ -24,6 +24,7 @@ SYSTEM_PROMPT = (
 async def run_agent(
     user_message: str,
     history: List[Dict[str, Any]] = None,
+    model: str = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Run the tool-calling loop with safety filtering."""
 
@@ -49,7 +50,11 @@ async def run_agent(
     tool_calls_log: List[Dict[str, Any]] = []
 
     for _ in range(settings.MAX_TOOL_ITERATIONS):
-        msg = provider.chat(messages=messages, tools=tools if tools else None)
+        msg = provider.chat(
+            messages=messages,
+            tools=tools if tools else None,
+            model=model,
+        )
         tool_calls = msg.get("tool_calls") or []
 
         if not tool_calls:
