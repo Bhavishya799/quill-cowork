@@ -1,0 +1,38 @@
+# Environment
+.env
+*.env
+!.env.example
+
+# Vault
+vault.enc
+*.token
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Credentials
+credentials/
+!credentials/.gitkeep
+
+# Workspace
+workspace/*
+!workspace/.gitkeep
+
+# Design outputs
+design/*.docx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+audit.log.jsonl

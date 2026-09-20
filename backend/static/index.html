@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Quill Cowork</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300;1,6..72,400;1,6..72,500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          'paper-base': '#F4EFE0',
+          'paper-surface': '#ECE5D3',
+          'paper-hover': '#E2D9BE',
+          'paper-card': '#EDE7D5',
+          'ink-primary': '#0A0A0A',
+          'ink-secondary': '#2C2B27',
+          'ink-muted': '#7D7A71',
+          'accent-mint': '#1B8A5A',
+          'accent-lemon': '#FFC700',
+          'primary': '#006a42',
+          'on-primary': '#ffffff',
+          'outline-variant': 'rgba(10, 10, 10, 0.07)'
+        },
+        fontFamily: {
+          'headline': ['Space Grotesk', 'sans-serif'],
+          'label-mono': ['JetBrains Mono', 'monospace'],
+          'code': ['JetBrains Mono', 'monospace'],
+          'body': ['Plus Jakarta Sans', 'sans-serif']
+        }
+      }
+    }
+  };
+</script>
+<style>
+  @layer base {
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body { overscroll-behavior: none; }
+  }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(10, 10, 10, 0.12); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(10, 10, 10, 0.25); }
+  .soft-blur-dock {
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+  @keyframes pulse-subtle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  .animate-subtle-pulse { animation: pulse-subtle 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+  .fade-transition { transition: opacity 0.35s ease, transform 0.35s ease; }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .animate-fade-in { animation: fade-in 0.3s ease-out; }
+</style>
+</head>
+<body class="bg-paper-base text-ink-primary antialiased flex h-screen overflow-hidden selection:bg-accent-lemon/40 selection:text-ink-primary font-body">
+
+<!-- Sidebar -->
+<aside class="w-60 lg:w-64 bg-paper-base shrink-0 h-full flex flex-col justify-between p-5 border-r border-ink-primary/[0.06] select-none z-30 transition-all duration-300">
+  <div class="flex flex-col gap-6">
+
+    <!-- Brand -->
+    <div class="flex items-center justify-between pt-1">
+      <div class="flex items-center gap-2.5 cursor-pointer" id="brand-logo" title="Reset to Home">
+        <div class="w-6 h-6 shrink-0 flex items-center justify-center">
+          <svg viewBox="0 0 80 80" class="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 64 C20.5 50, 31 34, 51 20 C59 13, 67 11, 69 13 C71 15, 69 23, 62 31 C48 51, 31 61, 18 64 Z" fill="#0A0A0A"/>
+            <path d="M39 31 C49 38, 57 49, 56 59 C46 57, 38 49, 31 39 C34 35, 37 33, 39 31 Z" fill="#1B8A5A"/>
+            <circle cx="23" cy="59" r="1.8" fill="#1B8A5A"/>
+          </svg>
+        </div>
+        <span class="font-headline tracking-tight text-base font-bold text-ink-primary">Quill Cowork</span>
+      </div>
+    </div>
+
+    <!-- New Chat -->
+    <button class="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-paper-surface/50 hover:bg-paper-surface text-ink-primary border border-ink-primary/[0.05] transition-all group active:scale-[0.99]" id="btn-new-chat">
+      <span class="font-body text-xs font-medium tracking-wide flex items-center gap-2">
+        <span class="material-symbols-outlined text-[16px] text-ink-muted group-hover:text-ink-primary transition-colors">add</span>New Chat
+      </span>
+      <span class="font-label-mono text-[10px] text-ink-muted/80 tracking-widest">⌘K</span>
+    </button>
+
+    <!-- Connected Services -->
+    <div class="flex flex-col gap-2">
+      <div class="flex items-center justify-between px-1">
+        <span class="font-label-mono text-[10px] uppercase text-ink-muted tracking-widest">Connected</span>
+        <span class="font-label-mono text-[10px] text-ink-muted/70" id="connector-count">—</span>
+      </div>
+      <nav class="flex flex-col gap-0.5" id="connector-list">
+        <!-- populated dynamically -->
+      </nav>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="flex flex-col gap-1.5 pt-2 border-t border-ink-primary/[0.05]">
+      <span class="px-1 font-label-mono text-[9px] uppercase text-ink-muted tracking-widest">Quick Actions</span>
+      <div id="quick-actions" class="flex flex-col gap-1">
+        <!-- populated dynamically -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer status -->
+  <div class="pt-3 border-t border-ink-primary/[0.05] flex items-center justify-between px-1">
+    <div class="flex items-center gap-2 text-xs font-body text-ink-muted">
+      <span class="w-1.5 h-1.5 rounded-full bg-accent-mint" id="engine-dot"></span>
+      <span id="engine-status">Connecting...</span>
+    </div>
+  </div>
+</aside>
+
+<!-- Main Canvas -->
+<main class="flex-1 flex flex-col h-full relative overflow-hidden bg-paper-base">
+
+  <!-- Header -->
+  <header class="h-16 px-8 flex items-center justify-between shrink-0 z-20 bg-paper-base/80 backdrop-blur-md">
+    <div class="flex items-center gap-2">
+      <span class="font-body text-xs font-medium text-ink-muted" id="header-subtitle">Drafting session</span>
+    </div>
+    <div class="flex items-center gap-1.5">
+      <button class="p-1.5 rounded-lg text-ink-muted hover:text-ink-primary hover:bg-paper-surface/50 transition-colors" id="btn-clear-canvas" title="New Chat">
+        <span class="material-symbols-outlined text-[18px]">restart_alt</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Chat Stream -->
+  <div class="flex-1 overflow-y-auto px-6 md:px-12 lg:px-20 pt-4 pb-48 flex flex-col scroll-smooth" id="conversation-stream">
+
+    <!-- Zero State -->
+    <div class="my-auto flex flex-col items-center justify-center text-center max-w-2xl mx-auto py-12 select-none fade-transition" id="zero-state">
+      <div class="w-10 h-10 mb-4 mx-auto rounded-full bg-paper-surface flex items-center justify-center">
+        <svg viewBox="0 0 80 80" class="w-5 h-5 opacity-90" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 64 C20.5 50, 31 34, 51 20 C59 13, 67 11, 69 13 C71 15, 69 23, 62 31 C48 51, 31 61, 18 64 Z" fill="#0A0A0A"/>
+          <path d="M39 31 C49 38, 57 49, 56 59 C46 57, 38 49, 31 39 C34 35, 37 33, 39 31 Z" fill="#1B8A5A"/>
+          <circle cx="23" cy="59" r="1.8" fill="#1B8A5A"/>
+        </svg>
+      </div>
+      <h1 class="font-headline text-2xl sm:text-3xl md:text-4xl text-ink-primary font-medium tracking-tight mb-2">What would you like to work on today?</h1>
+      <p class="font-body text-xs sm:text-sm text-ink-muted max-w-md mx-auto mb-8 font-normal leading-relaxed">Draft documents, review notifications, or organize your workspace with Quill.</p>
+      <div class="flex flex-wrap items-center justify-center gap-2 max-w-lg mx-auto" id="suggestion-chips">
+        <!-- populated dynamically -->
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="w-full max-w-3xl mx-auto flex flex-col gap-8 fade-transition hidden" id="messages-list"></div>
+
+  </div>
+
+  <!-- Floating Input Dock -->
+  <div class="absolute bottom-0 left-0 right-0 p-6 md:pb-8 flex flex-col items-center pointer-events-none z-30">
+    <div class="w-full max-w-3xl pointer-events-auto">
+
+      <!-- Toast -->
+      <div class="transition-opacity duration-300 text-center pb-2 pointer-events-none opacity-0" id="toast">
+        <span class="inline-flex items-center gap-1.5 font-body text-xs text-ink-secondary bg-paper-surface px-3 py-1 rounded-full border border-ink-primary/[0.07] shadow-sm">
+          <span class="w-1.5 h-1.5 rounded-full bg-accent-mint"></span>
+          <span id="toast-text">Ready</span>
+        </span>
+      </div>
+
+      <!-- Dock -->
+      <form class="bg-paper-surface/90 soft-blur-dock rounded-3xl p-2.5 sm:p-3 border border-ink-primary/[0.08] shadow-md transition-all flex flex-col gap-1" id="composer-form">
+        <textarea class="w-full bg-transparent border-0 resize-none font-body text-sm sm:text-base text-ink-primary placeholder:text-ink-muted/60 focus:ring-0 px-2 py-1 leading-relaxed focus:outline-none max-h-40" id="user-input" placeholder="Message Quill Cowork..." rows="1"></textarea>
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-1">
+            <button class="p-1.5 rounded-full text-ink-muted hover:text-ink-primary hover:bg-paper-base/60 transition-colors cursor-pointer" id="btn-attach" title="Attach file" type="button">
+              <span class="material-symbols-outlined text-[18px]">attach_file</span>
+            </button>
+            <span class="px-2 py-1 text-ink-muted text-xs font-body flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-accent-mint" id="context-indicator"></span>
+              <span id="context-text">Local</span>
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="font-label-mono text-[10px] text-ink-muted/70 hidden sm:inline" id="char-badge">0 chars</span>
+            <button aria-label="Send" class="w-8 h-8 rounded-full bg-ink-primary hover:bg-ink-secondary text-paper-base flex items-center justify-center transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer active:scale-95" id="btn-submit" type="submit">
+              <span class="material-symbols-outlined text-[16px]">arrow_upward</span>
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <div class="flex items-center justify-between px-3 pt-2 select-none">
+        <p class="text-center w-full font-body text-[11px] text-ink-muted/70">Quill Cowork runs entirely on your machine. Check important info.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ============================================================
+// QUILL COWORK — Frontend runtime
+// ============================================================
+const API_BASE = '';  // same-origin: FastAPI serves both frontend and API
+const WS_URL = 'ws://localhost:8000/ws';
+
+let ws = null;
+let wsReady = false;
+let reconnectTimer = null;
+let isGenerating = false;
+let currentThinkingEl = null;
+
+// ---------- Utilities ----------
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  const text = document.getElementById('toast-text');
+  if (!toast) return;
+  text.textContent = msg;
+  toast.classList.remove('opacity-0');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => toast.classList.add('opacity-0'), 2200);
+}
+
+function setEngineStatus(text, dotClass) {
+  document.getElementById('engine-status').textContent = text;
+  const dot = document.getElementById('engine-dot');
+  if (dot && dotClass) dot.className = 'w-1.5 h-1.5 rounded-full ' + dotClass;
+}
+
+// ---------- WebSocket ----------
+function connectWS() {
+  try { ws = new WebSocket(WS_URL); }
+  catch (e) { scheduleReconnect(); return; }
+
+  ws.onopen = () => {
+    wsReady = true;
+    setEngineStatus('Online & Ready', 'bg-accent-mint');
+    showToast('Connected to backend');
+  };
+
+  ws.onmessage = (ev) => {
+    let data;
+    try { data = JSON.parse(ev.data); } catch { return; }
+
+    if (data.type === 'thinking') {
+      showThinkingBubble();
+    } else if (data.type === 'reply') {
+      hideThinkingBubble();
+      appendAssistantReply(data.reply || '(empty response)', data.tool_calls || []);
+      isGenerating = false;
+      setEngineStatus('Online & Ready', 'bg-accent-mint');
+    }
+  };
+
+  ws.onclose = () => {
+    wsReady = false;
+    setEngineStatus('Reconnecting...', 'bg-accent-amber');
+    scheduleReconnect();
+  };
+
+  ws.onerror = () => setEngineStatus('Disconnected', 'bg-red-500');
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectWS();
+  }, 3000);
+}
+
+// ---------- Connectors ----------
+async function loadConnectors() {
+  try {
+    const r = await fetch(`${API_BASE}/connectors`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    renderSidebar(data.connectors || []);
+    renderChips(data.connectors || []);
+    document.getElementById('connector-count').textContent = `${(data.connectors || []).length} active`;
+  } catch (e) {
+    console.warn('Connectors load failed:', e);
+    document.getElementById('connector-list').innerHTML =
+      '<div class="px-3 py-2 text-[11px] font-label-mono text-ink-muted/60">Backend unreachable</div>';
+    document.getElementById('connector-count').textContent = 'offline';
+  }
+}
+
+function renderSidebar(connectors) {
+  const nav = document.getElementById('connector-list');
+  const actions = document.getElementById('quick-actions');
+  nav.innerHTML = '';
+  actions.innerHTML = '';
+
+  if (connectors.length === 0) {
+    nav.innerHTML = '<div class="px-3 py-2 text-[11px] font-label-mono text-ink-muted/60">No services connected</div>';
+    return;
+  }
+
+  connectors.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'w-full text-left px-3 py-2 rounded-lg text-xs font-body text-ink-secondary hover:text-ink-primary hover:bg-paper-surface/60 transition-colors flex items-center gap-2 group';
+    btn.innerHTML = `
+      <span class="w-1.5 h-1.5 rounded-full" style="background: ${c.accent || '#1B8A5A'}"></span>
+      <span class="truncate">${escapeHtml(c.name)}</span>
+    `;
+    btn.onclick = () => {
+      const firstAction = (c.quick_actions && c.quick_actions[0]) || null;
+      if (firstAction) sendMessage(firstAction.prompt);
+    };
+    nav.appendChild(btn);
+
+    (c.quick_actions || []).forEach(qa => {
+      const ab = document.createElement('button');
+      ab.className = 'px-3 py-1.5 rounded-lg text-xs text-ink-muted hover:text-ink-primary hover:bg-paper-surface/50 transition-colors flex items-center gap-2 text-left';
+      ab.innerHTML = `
+        <span class="material-symbols-outlined text-[16px] text-ink-muted">bolt</span>
+        <span class="truncate">${escapeHtml(qa.label)}</span>
+      `;
+      ab.onclick = () => sendMessage(qa.prompt);
+      actions.appendChild(ab);
+    });
+  });
+}
+
+function renderChips(connectors) {
+  const container = document.getElementById('suggestion-chips');
+  container.innerHTML = '';
+  const chips = [];
+  connectors.forEach(c => {
+    (c.quick_actions || []).forEach(qa => {
+      if (chips.length < 4) chips.push({ label: qa.label, prompt: qa.prompt });
+    });
+  });
+
+  if (chips.length === 0) {
+    // Fallback defaults
+    chips.push({ label: 'List my workspace files', prompt: 'List my workspace files' });
+    chips.push({ label: 'Check my GitHub notifications', prompt: 'Check my GitHub notifications' });
+  }
+
+  chips.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'suggestion-chip px-3.5 py-1.5 rounded-full bg-paper-surface/60 hover:bg-paper-surface text-ink-secondary hover:text-ink-primary text-xs font-body transition-all border border-ink-primary/[0.05] inline-flex items-center gap-2 cursor-pointer';
+    btn.innerHTML = `
+      <span>${escapeHtml(c.label)}</span>
+      <span class="material-symbols-outlined text-[14px] text-ink-muted">arrow_outward</span>
+    `;
+    btn.onclick = () => sendMessage(c.prompt);
+    container.appendChild(btn);
+  });
+}
+
+// ---------- Messages ----------
+function resetToZeroState() {
+  if (isGenerating) return;
+  document.getElementById('messages-list').innerHTML = '';
+  document.getElementById('messages-list').classList.add('hidden');
+  document.getElementById('zero-state').classList.remove('hidden');
+  const input = document.getElementById('user-input');
+  input.value = '';
+  input.style.height = 'auto';
+  document.getElementById('char-badge').textContent = '0 chars';
+  input.focus();
+}
+
+function appendUserMessage(text) {
+  const list = document.getElementById('messages-list');
+  const turn = document.createElement('article');
+  turn.className = 'flex flex-col items-end gap-1.5 animate-fade-in';
+  turn.innerHTML = `
+    <div class="max-w-2xl bg-paper-surface/80 rounded-2xl rounded-tr-sm px-5 py-3.5 text-ink-primary text-sm sm:text-base leading-relaxed border border-ink-primary/[0.04]">
+      ${escapeHtml(text)}
+    </div>
+  `;
+  list.appendChild(turn);
+  scrollToBottom();
+}
+
+function showThinkingBubble() {
+  if (currentThinkingEl) return;
+  const list = document.getElementById('messages-list');
+  const el = document.createElement('article');
+  el.className = 'flex flex-col gap-2 pt-2 animate-subtle-pulse';
+  el.innerHTML = `
+    <div class="flex items-center gap-2 font-label-mono text-[10px] text-ink-muted">
+      <span class="w-1.5 h-1.5 rounded-full bg-accent-mint animate-ping"></span>
+      <span class="tracking-widest uppercase font-semibold text-ink-secondary">Quill</span>
+    </div>
+    <div class="font-body text-xs text-ink-muted pl-3.5 border-l border-ink-primary/10">
+      Drafting response...
+    </div>
+  `;
+  list.appendChild(el);
+  currentThinkingEl = el;
+  scrollToBottom();
+}
+
+function hideThinkingBubble() {
+  if (currentThinkingEl) {
+    currentThinkingEl.remove();
+    currentThinkingEl = null;
+  }
+}
+
+function appendAssistantReply(replyText, toolCalls) {
+  const list = document.getElementById('messages-list');
+
+  const toolBlock = (toolCalls && toolCalls.length > 0)
+    ? `<div class="flex flex-col gap-1.5 mt-1">
+        ${toolCalls.map(tc => `
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-paper-surface/40 border border-ink-primary/[0.05] font-label-mono text-[10px]">
+            <span class="material-symbols-outlined text-[13px] text-accent-mint">build</span>
+            <span class="text-ink-primary">${escapeHtml(tc.tool)}</span>
+          </div>
+        `).join('')}
+      </div>`
+    : '';
+
+  const turn = document.createElement('article');
+  turn.className = 'flex flex-col gap-3 pt-2';
+  turn.innerHTML = `
+    <div class="flex items-center justify-between font-label-mono text-[10px] text-ink-muted">
+      <div class="flex items-center gap-2">
+        <span class="w-1.5 h-1.5 rounded-full bg-accent-mint"></span>
+        <span class="tracking-widest uppercase font-semibold text-ink-primary">Quill</span>
+        <span>•</span>
+        <span class="text-ink-muted">Local</span>
+      </div>
+    </div>
+
+    <div class="stream-text text-ink-secondary font-body text-sm sm:text-base leading-relaxed space-y-3 pl-0.5" style="white-space: pre-wrap;">
+      ${escapeHtml(replyText)}
+    </div>
+
+    ${toolBlock}
+
+    <div class="flex items-center justify-between pt-2 text-xs font-label-mono text-ink-muted/80 border-t border-ink-primary/[0.03]">
+      <span class="text-[10px] uppercase">Ready</span>
+      <button class="copy-btn hover:text-ink-primary transition-colors flex items-center gap-1.5 text-xs cursor-pointer font-body">
+        <span class="material-symbols-outlined text-[15px]">content_copy</span>
+        <span>Copy text</span>
+      </button>
+    </div>
+  `;
+
+  const copyBtn = turn.querySelector('.copy-btn');
+  copyBtn.addEventListener('click', () => {
+    const textToCopy = turn.querySelector('.stream-text')?.innerText || '';
+    navigator.clipboard.writeText(textToCopy);
+    copyBtn.innerHTML = `<span class="material-symbols-outlined text-[15px] text-accent-mint">check</span><span class="text-accent-mint">Copied</span>`;
+    setTimeout(() => {
+      copyBtn.innerHTML = `<span class="material-symbols-outlined text-[15px]">content_copy</span><span>Copy text</span>`;
+    }, 2000);
+  });
+
+  list.appendChild(turn);
+  scrollToBottom();
+}
+
+function scrollToBottom() {
+  const stream = document.getElementById('conversation-stream');
+  stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' });
+}
+
+// ---------- Send ----------
+function sendMessage(text) {
+  if (!text || !text.trim() || isGenerating) return;
+
+  document.getElementById('zero-state').classList.add('hidden');
+  document.getElementById('messages-list').classList.remove('hidden');
+
+  appendUserMessage(text);
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    appendAssistantReply('Backend offline. Start the Python server and refresh.', []);
+    return;
+  }
+
+  isGenerating = true;
+  setEngineStatus('Thinking...', 'bg-accent-lemon animate-pulse');
+
+  ws.send(JSON.stringify({ message: text, session_id: 'default' }));
+}
+
+// ---------- Composer ----------
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('user-input');
+  const form = document.getElementById('composer-form');
+  const charBadge = document.getElementById('char-badge');
+
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 160) + 'px';
+    charBadge.textContent = `${input.value.length} chars`;
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      form.dispatchEvent(new Event('submit'));
+    }
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || isGenerating) return;
+    input.value = '';
+    input.style.height = 'auto';
+    charBadge.textContent = '0 chars';
+    sendMessage(text);
+  });
+
+  document.getElementById('btn-new-chat').addEventListener('click', resetToZeroState);
+  document.getElementById('btn-clear-canvas').addEventListener('click', resetToZeroState);
+  document.getElementById('brand-logo').addEventListener('click', resetToZeroState);
+
+  document.getElementById('btn-attach').addEventListener('click', () => {
+    showToast('Attachments coming soon');
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      resetToZeroState();
+      input.focus();
+    }
+  });
+
+  // Boot
+  connectWS();
+  loadConnectors();
+});
+</script>
+</body>
+</html>
