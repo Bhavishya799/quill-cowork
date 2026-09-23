@@ -1,0 +1,87 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Quill - L4 Confirmation Card</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: { colors: {
+      'paper-base': '#F4EFE0', 'paper-surface': '#ECE5D3',
+      'ink-primary': '#0A0A0A', 'ink-secondary': '#2C2B27',
+      'ink-muted': '#7D7A71', 'accent-mint': '#1B8A5A', 'accent-lemon': '#FFC700',
+    }, fontFamily: {
+      'headline': ['Space Grotesk', 'sans-serif'],
+      'body': ['Plus Jakarta Sans', 'sans-serif'],
+      'mono': ['JetBrains Mono', 'monospace'],
+    }}}
+  }
+</script>
+</head>
+<body class="bg-paper-base min-h-screen p-12 flex items-center justify-center font-body">
+  <div class="w-full max-w-2xl">
+
+    <div class="flex flex-col items-end gap-1.5 mb-8">
+      <div class="max-w-xl bg-paper-surface/80 rounded-2xl rounded-tr-sm px-5 py-3.5 text-ink-primary text-sm leading-relaxed border border-ink-primary/[0.04]">
+        File an issue on my repo Bhavishya799/quill-cowork called "Test issue"
+      </div>
+      <span class="font-mono text-[10px] text-ink-muted pr-1">Just now</span>
+    </div>
+
+    <div class="flex items-center gap-2 font-mono text-[10px] text-ink-muted mb-3">
+      <span class="w-1.5 h-1.5 rounded-full bg-accent-mint"></span>
+      <span class="tracking-widest uppercase font-semibold text-ink-primary">Quill</span>
+      <span>&middot;</span>
+      <span>Local</span>
+    </div>
+
+    <div class="flex items-center gap-2 text-ink-secondary text-sm mb-4">
+      <span class="w-1.5 h-1.5 rounded-full bg-accent-lemon animate-pulse"></span>
+      <span class="italic">Awaiting your approval before proceeding...</span>
+    </div>
+
+    <div class="bg-paper-base border-2 border-accent-lemon rounded-xl overflow-hidden shadow-lg">
+
+      <div class="bg-accent-lemon/15 px-5 py-3 border-b border-accent-lemon/40 flex items-center gap-3">
+        <span class="material-symbols-outlined text-[20px] text-ink-primary">warning</span>
+        <div class="flex-1">
+          <div class="font-headline text-sm font-semibold text-ink-primary">Confirmation required</div>
+          <div class="font-mono text-[10px] text-ink-muted mt-0.5">Layer L4 &middot; Write operation</div>
+        </div>
+        <span class="font-mono text-[10px] text-ink-muted">expires in 60s</span>
+      </div>
+
+      <div class="px-5 py-4 border-b border-ink-primary/[0.06]">
+        <div class="font-mono text-[10px] uppercase tracking-widest text-ink-muted mb-2">Tool</div>
+        <div class="font-mono text-sm text-ink-primary mb-4">create_issue</div>
+
+        <div class="font-mono text-[10px] uppercase tracking-widest text-ink-muted mb-2">Arguments</div>
+        <div class="bg-paper-surface/60 rounded-lg p-3 font-mono text-xs text-ink-secondary space-y-1 border border-ink-primary/[0.06]">
+          <div><span class="text-ink-muted">owner:</span> <span class="text-ink-primary">"Bhavishya799"</span></div>
+          <div><span class="text-ink-muted">repo:</span>  <span class="text-ink-primary">"quill-cowork"</span></div>
+          <div><span class="text-ink-muted">title:</span> <span class="text-ink-primary">"Test issue"</span></div>
+          <div><span class="text-ink-muted">body:</span>  <span class="text-ink-primary">""</span></div>
+        </div>
+      </div>
+
+      <div class="px-5 py-4 flex items-center justify-between bg-paper-surface/30">
+        <div class="text-[11px] text-ink-muted max-w-xs">
+          This action will create a real issue on GitHub. Review the arguments before proceeding.
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="px-4 py-2 rounded-lg bg-paper-base hover:bg-paper-surface border border-ink-primary/10 text-ink-secondary text-xs font-medium">Reject</button>
+          <button class="px-4 py-2 rounded-lg bg-ink-primary hover:bg-ink-secondary text-paper-base text-xs font-medium">Approve</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="flex items-center justify-between pt-4 mt-4 text-xs font-mono text-ink-muted/80 border-t border-ink-primary/[0.03]">
+      <span class="text-[10px] uppercase">Paused &middot; awaiting user</span>
+      <span>Turn 1</span>
+    </div>
+
+  </div>
+</body>
+</html>

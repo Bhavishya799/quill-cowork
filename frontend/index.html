@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com" rel="preconnect"/>
 <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300;1,6..72,400;1,6..72,500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <script id="tailwind-config">
   tailwind.config = {
@@ -63,7 +63,7 @@
 </head>
 <body class="bg-paper-base text-ink-primary antialiased flex h-screen overflow-hidden selection:bg-accent-lemon/40 selection:text-ink-primary font-body">
 
-<!-- ==================== SIDEBAR ==================== -->
+<!-- Sidebar -->
 <aside class="w-60 lg:w-64 bg-paper-base shrink-0 h-full flex flex-col justify-between p-5 border-r border-ink-primary/[0.06] select-none z-30 transition-all duration-300">
   <div class="flex flex-col gap-6">
 
@@ -96,7 +96,7 @@
         <span class="font-label-mono text-[10px] text-ink-muted/70" id="connector-count">—</span>
       </div>
       <nav class="flex flex-col gap-0.5" id="connector-list">
-        <div class="px-3 py-2 text-[11px] font-label-mono text-ink-muted/60">Loading…</div>
+        <!-- populated dynamically -->
       </nav>
     </div>
 
@@ -104,7 +104,7 @@
     <div class="flex flex-col gap-1.5 pt-2 border-t border-ink-primary/[0.05]">
       <span class="px-1 font-label-mono text-[9px] uppercase text-ink-muted tracking-widest">Quick Actions</span>
       <div id="quick-actions" class="flex flex-col gap-1">
-        <div class="px-3 py-1.5 text-[11px] text-ink-muted/60">—</div>
+        <!-- populated dynamically -->
       </div>
     </div>
 
@@ -114,23 +114,18 @@
   <div class="pt-3 border-t border-ink-primary/[0.05] flex items-center justify-between px-1">
     <div class="flex items-center gap-2 text-xs font-body text-ink-muted">
       <span class="w-1.5 h-1.5 rounded-full bg-accent-mint" id="engine-dot"></span>
-      <span id="engine-status">Connecting…</span>
+      <span id="engine-status">Connecting...</span>
     </div>
   </div>
 </aside>
 
-<!-- ==================== MAIN CANVAS ==================== -->
+<!-- Main Canvas -->
 <main class="flex-1 flex flex-col h-full relative overflow-hidden bg-paper-base">
 
   <!-- Header -->
   <header class="h-16 px-8 flex items-center justify-between shrink-0 z-20 bg-paper-base/80 backdrop-blur-md">
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2">
       <span class="font-body text-xs font-medium text-ink-muted" id="header-subtitle">Drafting session</span>
-      <button id="model-chip" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-paper-surface/70 hover:bg-paper-surface border border-ink-primary/[0.07] transition-colors cursor-pointer">
-        <span class="w-1.5 h-1.5 rounded-full bg-accent-mint"></span>
-        <span class="font-label-mono text-[10px] uppercase tracking-widest text-ink-primary" id="model-chip-label">Loading…</span>
-        <span class="material-symbols-outlined text-[14px] text-ink-muted">expand_more</span>
-      </button>
     </div>
     <div class="flex items-center gap-1.5">
       <button class="p-1.5 rounded-lg text-ink-muted hover:text-ink-primary hover:bg-paper-surface/50 transition-colors" id="btn-clear-canvas" title="New Chat">
@@ -204,27 +199,11 @@
   </div>
 </main>
 
-<!-- ==================== MODEL SLOT PICKER ==================== -->
-<div id="model-dropdown" class="hidden fixed inset-0 z-50 flex items-start justify-center pt-24 bg-ink-primary/10 backdrop-blur-sm">
-  <div class="w-full max-w-md bg-paper-base border border-ink-primary/[0.08] rounded-2xl shadow-xl overflow-hidden" onclick="event.stopPropagation()">
-    <div class="px-5 py-4 border-b border-ink-primary/[0.06]">
-      <div class="font-label-mono text-[10px] uppercase tracking-widest text-ink-muted mb-1">Select Model</div>
-      <div class="font-headline text-base font-bold text-ink-primary">Local inference engine</div>
-    </div>
-    <div id="model-list" class="max-h-80 overflow-y-auto p-2"></div>
-    <div class="px-5 py-3 bg-paper-surface/40 border-t border-ink-primary/[0.06] flex items-center justify-between">
-      <span class="font-body text-[11px] text-ink-muted">Models read from your Ollama install</span>
-      <button onclick="closeModelDropdown()" class="font-label-mono text-[10px] uppercase tracking-widest text-ink-muted hover:text-ink-primary transition-colors cursor-pointer">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- ==================== RUNTIME ==================== -->
 <script>
 // ============================================================
-// Quill Cowork — frontend runtime
+// QUILL COWORK — Frontend runtime
 // ============================================================
-const API_BASE = '';
+const API_BASE = '';  // uses Vite proxy: /api -> http://localhost:8000
 const WS_URL = 'ws://localhost:8000/ws';
 
 let ws = null;
@@ -233,9 +212,7 @@ let reconnectTimer = null;
 let isGenerating = false;
 let currentThinkingEl = null;
 
-// ============================================================
-// Utilities
-// ============================================================
+// ---------- Utilities ----------
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
@@ -261,9 +238,7 @@ function setEngineStatus(text, dotClass) {
   if (dot && dotClass) dot.className = 'w-1.5 h-1.5 rounded-full ' + dotClass;
 }
 
-// ============================================================
-// WebSocket
-// ============================================================
+// ---------- WebSocket ----------
 function connectWS() {
   try { ws = new WebSocket(WS_URL); }
   catch (e) { scheduleReconnect(); return; }
@@ -271,7 +246,7 @@ function connectWS() {
   ws.onopen = () => {
     wsReady = true;
     setEngineStatus('Online & Ready', 'bg-accent-mint');
-    showToast('Connected');
+    showToast('Connected to backend');
   };
 
   ws.onmessage = (ev) => {
@@ -280,97 +255,23 @@ function connectWS() {
 
     if (data.type === 'thinking') {
       showThinkingBubble();
-    } else if (data.type === 'confirm_request') {
-      hideThinkingBubble();
-      showConfirmCard(data.call_id, data.tool, data.arguments);
     } else if (data.type === 'reply') {
       hideThinkingBubble();
-      removeConfirmCard();
       appendAssistantReply(data.reply || '(empty response)', data.tool_calls || []);
       isGenerating = false;
       setEngineStatus('Online & Ready', 'bg-accent-mint');
-    } else if (data.type === 'error') {
-      hideThinkingBubble();
-      isGenerating = false;
-      setEngineStatus('Online & Ready', 'bg-accent-mint');
-      showToast(data.message || 'error');
     }
   };
 
   ws.onclose = () => {
     wsReady = false;
-    setEngineStatus('Reconnecting...', 'bg-accent-lemon');
+    setEngineStatus('Reconnecting...', 'bg-accent-amber');
     scheduleReconnect();
   };
 
   ws.onerror = () => setEngineStatus('Disconnected', 'bg-red-500');
 }
-let activeConfirmId = null;
 
-function showConfirmCard(callId, tool, args) {
-    activeConfirmId = callId;
-    const container = document.getElementById('messages-list');
-    container.classList.remove('hidden');
-    document.getElementById('zero-state').classList.add('hidden');
-
-    const card = document.createElement('article');
-    card.id = 'confirm-card';
-    card.className = 'flex flex-col gap-2 pt-3 animate-fade-in';
-
-    const argLines = Object.entries(args || {}).map(([k, v]) => {
-        const val = typeof v === 'string' ? v : JSON.stringify(v);
-        const shown = val.length > 80 ? val.slice(0, 80) + '…' : val;
-        return `<div><span class="text-ink-muted">${escapeHtml(k)}:</span> <span class="text-ink-primary">${escapeHtml(shown)}</span></div>`;
-    }).join('');
-
-    card.innerHTML = `
-      <div class="bg-paper-base border-2 border-accent-lemon rounded-xl overflow-hidden shadow-lg">
-        <div class="bg-accent-lemon/15 px-5 py-3 border-b border-accent-lemon/40 flex items-center gap-3">
-          <span class="material-symbols-outlined text-[20px] text-ink-primary">warning</span>
-          <div class="flex-1">
-            <div class="font-headline text-sm font-semibold text-ink-primary">Confirmation required</div>
-            <div class="font-label-mono text-[10px] text-ink-muted mt-0.5">Write operation</div>
-          </div>
-          <span class="font-label-mono text-[10px] text-ink-muted">expires in 60s</span>
-        </div>
-        <div class="px-5 py-4 border-b border-ink-primary/[0.06]">
-          <div class="font-label-mono text-[10px] uppercase tracking-widest text-ink-muted mb-2">Tool</div>
-          <div class="font-code text-sm text-ink-primary mb-4">${escapeHtml(tool)}</div>
-          <div class="font-label-mono text-[10px] uppercase tracking-widest text-ink-muted mb-2">Arguments</div>
-          <div class="bg-paper-surface/60 rounded-lg p-3 font-code text-xs text-ink-secondary space-y-1 border border-ink-primary/[0.06]">
-            ${argLines || '<div class="text-ink-muted">(none)</div>'}
-          </div>
-        </div>
-        <div class="px-5 py-4 flex items-center justify-end gap-2 bg-paper-surface/30">
-          <button id="confirm-reject" class="px-4 py-2 rounded-lg bg-paper-base hover:bg-paper-surface border border-ink-primary/10 text-ink-secondary text-xs font-medium transition-colors cursor-pointer">Reject</button>
-          <button id="confirm-approve" class="px-4 py-2 rounded-lg bg-ink-primary hover:bg-ink-secondary text-paper-base text-xs font-medium transition-colors cursor-pointer">Approve</button>
-        </div>
-      </div>
-    `;
-    container.appendChild(card);
-    container.scrollTop = container.scrollHeight;
-
-    document.getElementById('confirm-approve').onclick = () => sendConfirm(true);
-    document.getElementById('confirm-reject').onclick = () => sendConfirm(false);
-}
-
-function sendConfirm(approved) {
-    if (!activeConfirmId || !ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(JSON.stringify({
-        type: 'confirm_response',
-        call_id: activeConfirmId,
-        approved: approved,
-    }));
-    activeConfirmId = null;
-    const card = document.getElementById('confirm-card');
-    if (card) card.remove();
-}
-
-function removeConfirmCard() {
-    const card = document.getElementById('confirm-card');
-    if (card) card.remove();
-    activeConfirmId = null;
-}
 function scheduleReconnect() {
   if (reconnectTimer) return;
   reconnectTimer = setTimeout(() => {
@@ -379,12 +280,10 @@ function scheduleReconnect() {
   }, 3000);
 }
 
-// ============================================================
-// Connectors
-// ============================================================
+// ---------- Connectors ----------
 async function loadConnectors() {
   try {
-    const r = await fetch(`${API_BASE}/connectors`);
+    const r = await fetch(`${API_BASE}/api/connectors`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     renderSidebar(data.connectors || []);
@@ -446,6 +345,7 @@ function renderChips(connectors) {
   });
 
   if (chips.length === 0) {
+    // Fallback defaults
     chips.push({ label: 'List my workspace files', prompt: 'List my workspace files' });
     chips.push({ label: 'Check my GitHub notifications', prompt: 'Check my GitHub notifications' });
   }
@@ -462,95 +362,7 @@ function renderChips(connectors) {
   });
 }
 
-// ============================================================
-// Model Slots
-// ============================================================
-let slots = { fast: '…', balanced: '…', powerful: '…' };
-let currentSlot = 'balanced';
-
-const SLOT_LABELS = { fast: 'Fast', balanced: 'Balanced', powerful: 'Powerful' };
-const SLOT_DESCRIPTIONS = {
-  fast: 'Quick replies · lower VRAM',
-  balanced: 'Default · best trade-off',
-  powerful: 'Slower · highest quality'
-};
-
-async function loadSlots() {
-  try {
-    const r = await fetch(`${API_BASE}/models/slots`);
-    const data = await r.json();
-    slots = data.slots || {};
-    currentSlot = data.current_slot || 'balanced';
-    updateModelChip();
-  } catch (e) {
-    console.warn('Slots load failed:', e);
-    document.getElementById('model-chip-label').textContent = 'Offline';
-  }
-}
-
-function updateModelChip() {
-  const el = document.getElementById('model-chip-label');
-  el.textContent = SLOT_LABELS[currentSlot] || currentSlot;
-}
-
-function openModelDropdown() {
-  const dropdown = document.getElementById('model-dropdown');
-  const list = document.getElementById('model-list');
-  list.innerHTML = '';
-
-  const keys = Object.keys(slots);
-  if (keys.length === 0) {
-    list.innerHTML = '<div class="px-4 py-6 text-center font-body text-xs text-ink-muted">No slots available</div>';
-  } else {
-    keys.forEach(key => {
-      const model = slots[key];
-      const isActive = key === currentSlot;
-      const btn = document.createElement('button');
-      btn.className = 'w-full text-left px-4 py-3 rounded-xl hover:bg-paper-surface/60 transition-colors flex items-center justify-between cursor-pointer';
-      btn.innerHTML = `
-        <div class="flex flex-col">
-          <span class="font-body text-sm font-medium ${isActive ? 'text-accent-mint' : 'text-ink-primary'}">${SLOT_LABELS[key] || key}</span>
-          <span class="font-label-mono text-[9px] text-ink-muted/70 mt-0.5">${escapeHtml(model)}</span>
-          <span class="font-body text-[11px] text-ink-muted/80 mt-0.5">${SLOT_DESCRIPTIONS[key] || ''}</span>
-        </div>
-        ${isActive ? '<span class="material-symbols-outlined text-[18px] text-accent-mint">check</span>' : ''}
-      `;
-      btn.onclick = () => selectSlot(key);
-      list.appendChild(btn);
-    });
-  }
-
-  dropdown.classList.remove('hidden');
-}
-
-function closeModelDropdown() {
-  document.getElementById('model-dropdown').classList.add('hidden');
-}
-
-async function selectSlot(slot) {
-  try {
-    const r = await fetch(`${API_BASE}/models/slots/select`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slot }),
-    });
-    const data = await r.json();
-    if (data.ok) {
-      currentSlot = data.slot;
-      updateModelChip();
-      closeModelDropdown();
-      showToast(`Switched to ${SLOT_LABELS[slot] || slot}`);
-    } else {
-      showToast(`Failed: ${data.error || 'unknown error'}`);
-    }
-  } catch (e) {
-    showToast(`Error: ${e.message}`);
-  }
-}
-
-// ============================================================
-// Messages
-// ============================================================
+// ---------- Messages ----------
 function resetToZeroState() {
   if (isGenerating) return;
   document.getElementById('messages-list').innerHTML = '';
@@ -587,7 +399,7 @@ function showThinkingBubble() {
       <span class="tracking-widest uppercase font-semibold text-ink-secondary">Quill</span>
     </div>
     <div class="font-body text-xs text-ink-muted pl-3.5 border-l border-ink-primary/10">
-      Drafting response…
+      Drafting response...
     </div>
   `;
   list.appendChild(el);
@@ -662,9 +474,7 @@ function scrollToBottom() {
   stream.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' });
 }
 
-// ============================================================
-// Send
-// ============================================================
+// ---------- Send ----------
 function sendMessage(text) {
   if (!text || !text.trim() || isGenerating) return;
 
@@ -679,14 +489,12 @@ function sendMessage(text) {
   }
 
   isGenerating = true;
-  setEngineStatus('Thinking…', 'bg-accent-lemon animate-pulse');
+  setEngineStatus('Thinking...', 'bg-accent-lemon animate-pulse');
 
   ws.send(JSON.stringify({ message: text, session_id: 'default' }));
 }
 
-// ============================================================
-// Composer
-// ============================================================
+// ---------- Composer ----------
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('user-input');
   const form = document.getElementById('composer-form');
@@ -723,12 +531,6 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast('Attachments coming soon');
   });
 
-  // Model picker wiring
-  const chip = document.getElementById('model-chip');
-  if (chip) chip.addEventListener('click', openModelDropdown);
-  const dd = document.getElementById('model-dropdown');
-  if (dd) dd.addEventListener('click', closeModelDropdown);
-
   // Keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -736,16 +538,12 @@ document.addEventListener('DOMContentLoaded', () => {
       resetToZeroState();
       input.focus();
     }
-    if (e.key === 'Escape') {
-      closeModelDropdown();
-    }
   });
 
   // Boot
   connectWS();
   loadConnectors();
-  loadSlots();
 });
 </script>
 </body>
-</html>
+</html> 
