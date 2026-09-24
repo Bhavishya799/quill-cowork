@@ -5,8 +5,18 @@ from typing import Any, Callable, Dict, List, get_type_hints
 
 _TYPE_MAP = {
     str: "string", int: "integer", float: "number", bool: "boolean",
-    list: "array", List: "array", dict: "object", Dict: "object",
+    list: "array", dict: "object",
 }
+
+
+def _json_type(hint) -> str:
+    origin = getattr(hint, "__origin__", None)
+    if origin in (list, List):
+        return "array"
+    if origin in (dict, Dict):
+        return "object"
+    return _TYPE_MAP.get(hint, "string")
+
 
 _tools: Dict[str, Dict[str, Any]] = {}
 _connectors: Dict[str, Dict[str, Any]] = {}
@@ -22,7 +32,7 @@ def tool(fn: Callable = None, *, destructive: bool = False):
         for name, param in sig.parameters.items():
             if name in ("self", "cls"):
                 continue
-            props[name] = {"type": _TYPE_MAP.get(hints.get(name, str), "string")}
+            props[name] = {"type": _json_type(hints.get(name, str))}
             if param.default is inspect.Parameter.empty:
                 required.append(name)
 

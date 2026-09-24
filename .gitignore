@@ -1,38 +1,24 @@
-# Environment
-.env
-*.env
-!.env.example
-
-# Vault
 vault.enc
-*.token
-
-# Python
-venv/
+audit.log.jsonl
+backend.tar.gz
+.env
+.env.local
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
-
-# Credentials
-credentials/
-!credentials/.gitkeep
-
-# Workspace
-workspace/*
-!workspace/.gitkeep
-
-# Design outputs
-design/*.docx
-
-# OS
+venv/
+.venv/
+*.egg-info/
 .DS_Store
-Thumbs.db
+model_selection.json
+# Vault backups
+backend/vault.enc.bak
+backend/vault.enc.old
+backend/vault.enc.tmp
 
-# IDE
-.vscode/
-.idea/
+# Scratch and personal
+backend/mycodebase.txt
+backend/dump.py
 
-# Logs
-*.log
-audit.log.jsonl
+# Workspace user data (belt and braces — dir already ignored)
+workspace/

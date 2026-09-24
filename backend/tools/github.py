@@ -26,7 +26,7 @@ class GitHubConnector:
 
 
 def _token() -> str:
-    return vault.get("GITHUB_PERSONAL_ACCESS_TOKEN") or os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN", "")
+    return vault.get_safe("GITHUB_PERSONAL_ACCESS_TOKEN") or os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN", "")
 
 
 def _headers() -> dict:
@@ -75,7 +75,7 @@ def get_notification_details(notification_id: str) -> str:
     )
 
 
-@tool
+@tool(destructive=True)
 def mark_all_notifications_read() -> str:
     """Mark all GitHub notifications as read."""
     status, _ = _request("PUT", "/notifications")
@@ -143,7 +143,7 @@ def create_issue(owner: str, repo: str, title: str, body: str = "") -> str:
     """Create a GitHub issue."""
     status, data = _request("POST", f"/repos/{owner}/{repo}/issues",
                             json={"title": title, "body": body})
-    if status != 200:
+    if status not in (200, 201):
         return f"GitHub error {status}: {data}"
     return f"created #{data['number']}: {data['html_url']}"
 
@@ -153,6 +153,6 @@ def comment_on_issue(owner: str, repo: str, number: int, body: str) -> str:
     """Post a comment on an issue or PR."""
     status, data = _request("POST", f"/repos/{owner}/{repo}/issues/{number}/comments",
                             json={"body": body})
-    if status != 200:
+    if status not in (200, 201):
         return f"GitHub error {status}: {data}"
     return f"comment posted: {data['html_url']}"

@@ -1,20 +1,81 @@
-{
-  "results": {
-    "simple": {
-      "median": 6.27,
-      "min": 6.24,
-      "max": 6.34
-    },
-    "single_tool": {
-      "median": 6.26,
-      "min": 6.25,
-      "max": 6.3
-    },
-    "multi_tool": {
-      "median": 6.29,
-      "min": 6.29,
-      "max": 6.31
-    }
+[
+  {
+    "label": "conversational",
+    "prompt": "what is 2 + 2",
+    "runs": 3,
+    "errors": 0,
+    "median_sec": 2.68,
+    "min_sec": 2.66,
+    "max_sec": 2.68,
+    "tools_fired": [],
+    "expected_tool": null,
+    "tool_verified": true
   },
-  "timestamp": "2026-09-21T16:46:19.651346"
-}
+  {
+    "label": "filesystem",
+    "prompt": "list my workspace files",
+    "runs": 3,
+    "errors": 0,
+    "median_sec": 3.51,
+    "min_sec": 3.37,
+    "max_sec": 3.95,
+    "tools_fired": [],
+    "expected_tool": "list_directory",
+    "tool_verified": false
+  },
+  {
+    "label": "github",
+    "prompt": "list my github repos",
+    "runs": 3,
+    "errors": 0,
+    "median_sec": 8.67,
+    "min_sec": 8.12,
+    "max_sec": 9.26,
+    "tools_fired": [
+      "list_repos"
+    ],
+    "expected_tool": "list_repos",
+    "tool_verified": true
+  },
+  {
+    "label": "web_search",
+    "prompt": "search the web for the latest AI news",
+    "runs": 3,
+    "errors": 0,
+    "median_sec": 26.35,
+    "min_sec": 11.24,
+    "max_sec": 35.53,
+    "tools_fired": [
+      "web_search"
+    ],
+    "expected_tool": "web_search",
+    "tool_verified": true
+  },
+  {
+    "label": "wikipedia",
+    "prompt": "look up the Fermi paradox",
+    "runs": 3,
+    "errors": 0,
+    "median_sec": 13.94,
+    "min_sec": 8.14,
+    "max_sec": 25.1,
+    "tools_fired": [
+      "search_wikipedia",
+      "web_search"
+    ],
+    "expected_tool": "search_wikipedia",
+    "tool_verified": true
+  },
+  {
+    "label": "codebase",
+    "prompt": "list my connected codebases",
+    "runs": 3,
+    "errors": 0,
+    "median_sec": 3.03,
+    "min_sec": 2.97,
+    "max_sec": 3.07,
+    "tools_fired": [],
+    "expected_tool": "list_codebases",
+    "tool_verified": false
+  }
+]

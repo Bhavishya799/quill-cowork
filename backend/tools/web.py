@@ -27,18 +27,33 @@ def fetch_page(url: str, max_chars: int = 4000) -> str:
     if not ok:
         return f"blocked: {reason}"
 
+    current = url
+    r = None
     try:
-        r = httpx.get(
-            url,
+        with httpx.Client(
             headers={"User-Agent": "Quill/0.2"},
             timeout=20,
-            follow_redirects=True,
-        )
+            follow_redirects=False,
+        ) as client:
+            for _ in range(5):
+                r = client.get(current)
+                if r.status_code in (301, 302, 303, 307, 308):
+                    loc = r.headers.get("location")
+                    if not loc:
+                        return "redirect with no location"
+                    current = str(httpx.URL(current).join(loc))
+                    ok2, reason2 = check_egress(current)
+                    if not ok2:
+                        return f"blocked (redirect): {reason2}"
+                    continue
+                break
+            else:
+                return "too many redirects"
     except Exception as e:
         return f"fetch failed: {e}"
 
-    if r.status_code != 200:
-        return f"HTTP {r.status_code}"
+    if r is None or r.status_code != 200:
+        return f"HTTP {r.status_code if r else 'no response'}"
 
     html = r.text
     html = re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
@@ -50,4 +65,4 @@ def fetch_page(url: str, max_chars: int = 4000) -> str:
     if flagged:
         return f"[INJECTION WARNING] content withheld ({matched})"
 
-    return f"from {url}:\n{text}"
+    return f"from {current}:\n{text}"

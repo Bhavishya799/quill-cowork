@@ -3,8 +3,7 @@ from typing import Tuple, List
 
 
 _BLOCKED = re.compile("|".join([
-    r"\b(brute[- ]?forc\w*|crack\w*|exploit\w*|payload|shellcode|reverse shell|"
-    r"privilege escalation|buffer overflow|xss|sql injection|ransomware|"
+    r"\b(brute[- ]?forc\w*|crack\w*\s+(?:(?:a|an|the)\s+)?(?:password|hash|key|wifi|ssh|wpa|pin|login|account)|exploit\w*|payload|shellcode|reverse shell|"    r"privilege escalation|buffer overflow|xss|sql injection|ransomware|"
     r"keylogger|rootkit|botnet|ddos|phishing|malware|backdoor|trojan|spyware|virus)\b",
     r"\b(steal|dump|exfiltrate|harvest)\s+(password|credential|token|key)",
     r"\b(unauthorized|illegal|without permission)\s+(access|entry|login)",
@@ -34,6 +33,8 @@ _INJECTION = re.compile("|".join([
 
 _SECRETS = [
     (re.compile(r"ghp_[A-Za-z0-9]{36,}"), "github_token"),
+    (re.compile(r"tvly-[A-Za-z0-9_\-]{20,}"), "tavily_key"),
+    (re.compile(r"GOCSPX-[A-Za-z0-9_\-]{20,}"), "google_oauth_secret"),
     (re.compile(r"github_pat_[A-Za-z0-9_]{40,}"), "github_fine"),
     (re.compile(r"sk-ant-[A-Za-z0-9\-_]{40,}"), "anthropic_key"),
     (re.compile(r"sk-[A-Za-z0-9]{20,}"), "openai_like"),

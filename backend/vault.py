@@ -26,9 +26,19 @@ class VaultLockedError(PermissionError):
 
 class Vault:
     def __init__(self):
-        self._master_key = self._load_or_create_master_key()
-        self._data = self._load_vault()
+        self._master_key: Optional[bytes] = None
+        self._data: dict = {}
         self._session_key: Optional[bytes] = None
+        self._load_error: Optional[str] = None
+        try:
+            self._master_key = self._load_or_create_master_key()
+            self._data = self._load_vault()
+        except Exception as e:
+            self._load_error = f"vault unavailable: {e}"
+
+    def _check(self):
+        if self._load_error:
+            raise RuntimeError(self._load_error)
 
     def _load_or_create_master_key(self) -> bytes:
         try:
@@ -44,29 +54,57 @@ class Vault:
     def _load_vault(self) -> dict:
         if not VAULT_PATH.exists():
             return {}
+        raw = VAULT_PATH.read_bytes()
+        if len(raw) < 13:
+            raise RuntimeError("vault.enc is corrupted (too short)")
+        nonce, ct = raw[:12], raw[12:]
         try:
-            raw = VAULT_PATH.read_bytes()
-            if len(raw) < 13:
-                return {}
-            nonce, ct = raw[:12], raw[12:]
             plaintext = AESGCM(self._master_key).decrypt(nonce, ct, None)
-            return json.loads(plaintext.decode("utf-8"))
-        except Exception:
-            return {}
+        except Exception as e:
+            raise RuntimeError(f"vault.enc failed to decrypt: {e}") from e
+        return json.loads(plaintext.decode("utf-8"))
 
     def _save_vault(self):
+        self._check()
         plaintext = json.dumps(self._data).encode("utf-8")
         nonce = secrets.token_bytes(12)
         ct = AESGCM(self._master_key).encrypt(nonce, plaintext, None)
-        VAULT_PATH.write_bytes(nonce + ct)
+        tmp = VAULT_PATH.with_suffix(".enc.tmp")
+        tmp.write_bytes(nonce + ct)
+        tmp.replace(VAULT_PATH)
+
+    def _has_passphrase_internal(self) -> bool:
+        return "__meta__" in self._data
+
+    def _effective_key(self) -> bytes:
+        """
+        Return the key used for sensitive entries.
+
+        - If a passphrase is set AND the vault is unlocked -> session key (from passphrase).
+        - If no passphrase is set -> master key (from OS keyring).
+        - If a passphrase is set but locked -> raises VaultLockedError.
+        """
+        if self._session_key is not None:
+            return self._session_key
+        if self._has_passphrase_internal():
+            raise VaultLockedError("unlock the vault before accessing sensitive credentials")
+        if self._master_key is None:
+            raise RuntimeError("vault master key unavailable")
+        return self._master_key
 
     def is_locked(self) -> bool:
+        if self._load_error:
+            return True
+        if not self._has_passphrase_internal():
+            return False
         return self._session_key is None
 
     def has_passphrase(self) -> bool:
-        return "__meta__" in self._data
+        self._check()
+        return self._has_passphrase_internal()
 
     def set_passphrase(self, passphrase: str) -> None:
+        self._check()
         if not passphrase or len(passphrase) < 8:
             raise ValueError("passphrase must be at least 8 characters")
         salt = secrets.token_bytes(16)
@@ -80,6 +118,7 @@ class Vault:
         self._save_vault()
 
     def unlock(self, passphrase: str) -> bool:
+        self._check()
         meta = self._data.get("__meta__")
         if not meta:
             return False
@@ -95,11 +134,11 @@ class Vault:
         self._session_key = None
 
     def set(self, key: str, value: str, sensitive: bool = False) -> None:
+        self._check()
         if sensitive:
-            if self._session_key is None:
-                raise VaultLockedError("unlock the vault before storing sensitive credentials")
+            enc_key = self._effective_key()
             nonce = secrets.token_bytes(12)
-            blob = AESGCM(self._session_key).encrypt(nonce, value.encode(), None)
+            blob = AESGCM(enc_key).encrypt(nonce, value.encode(), None)
             self._data[key] = {
                 "sensitive": True,
                 "blob": base64.b64encode(nonce + blob).decode(),
@@ -109,34 +148,50 @@ class Vault:
         self._save_vault()
 
     def get(self, key: str) -> str:
+        self._check()
         entry = self._data.get(key)
-        if not entry or key.startswith("__"):
+        if entry is None or key.startswith("__"):
             return ""
+        if not isinstance(entry, dict):
+            return str(entry)
         if entry.get("sensitive"):
-            if self._session_key is None:
-                raise VaultLockedError(f"credential '{key}' is locked")
+            enc_key = self._effective_key()
             raw = base64.b64decode(entry["blob"])
             nonce, ct = raw[:12], raw[12:]
-            return AESGCM(self._session_key).decrypt(nonce, ct, None).decode()
+            return AESGCM(enc_key).decrypt(nonce, ct, None).decode()
         return entry.get("value", "")
 
+    def get_safe(self, key: str) -> str:
+        try:
+            return self.get(key)
+        except (VaultLockedError, RuntimeError):
+            return ""
+
     def delete(self, key: str) -> None:
+        self._check()
         if key in self._data:
             del self._data[key]
             self._save_vault()
 
     def has(self, key: str) -> bool:
+        self._check()
         return key in self._data and not key.startswith("__")
 
     def keys(self) -> list:
+        self._check()
         return [k for k in self._data.keys() if not k.startswith("__")]
 
     def info(self, key: str) -> dict:
-        entry = self._data.get(key, {})
+        self._check()
+        entry = self._data.get(key)
+        if entry is None:
+            return {"key": key, "sensitive": False, "exists": False}
+        if not isinstance(entry, dict):
+            return {"key": key, "sensitive": False, "exists": True}
         return {
             "key": key,
             "sensitive": entry.get("sensitive", False),
-            "exists": bool(entry),
+            "exists": True,
         }
 
 
@@ -152,14 +207,20 @@ def _cli():
     cmd = sys.argv[1]
 
     if cmd == "list":
-        for k in vault.keys():
-            tag = " [locked]" if vault.info(k)["sensitive"] and vault.is_locked() else ""
-            print(f"  {k}{tag}")
+        try:
+            for k in vault.keys():
+                tag = " [sensitive]" if vault.info(k)["sensitive"] else ""
+                print(f"  {k}{tag}")
+        except RuntimeError as e:
+            print(f"vault error: {e}")
         return
 
     if cmd == "status":
-        print("passphrase set:", vault.has_passphrase())
-        print("session:", "locked" if vault.is_locked() else "unlocked")
+        try:
+            print("passphrase set:", vault.has_passphrase())
+            print("session:", "locked" if vault.is_locked() else "unlocked")
+        except RuntimeError as e:
+            print("vault error:", e)
         return
 
     if cmd == "set-passphrase":
@@ -198,6 +259,8 @@ def _cli():
             print(vault.get(sys.argv[2]) or f"'{sys.argv[2]}' not found")
         except VaultLockedError:
             print(f"'{sys.argv[2]}' is locked. run: vault.py unlock <passphrase>")
+        except RuntimeError as e:
+            print(f"vault error: {e}")
         return
 
     if cmd == "delete":

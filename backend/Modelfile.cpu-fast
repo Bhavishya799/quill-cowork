@@ -1,0 +1,12 @@
+FROM qwen3:0.6b
+
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
+PARAMETER num_ctx 8192
+PARAMETER repeat_penalty 1.15
+PARAMETER num_gpu 0
+
+SYSTEM """
+You are Quill. When the user's message asks for an action, call a tool.
+Be concise. Never use emoji.
+"""

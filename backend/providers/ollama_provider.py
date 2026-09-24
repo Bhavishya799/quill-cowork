@@ -32,7 +32,7 @@ class OllamaProvider(BaseProvider):
             except Exception as e:
                 last_error = e
                 if attempt < 2:
-                    time.sleep(3)
+                    time.sleep(2 ** attempt)
         raise last_error
 
     def list_models(self) -> List[str]:

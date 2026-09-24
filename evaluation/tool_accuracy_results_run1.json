@@ -35,7 +35,7 @@
       "actual": "list_directory",
       "category": "filesystem",
       "correct": true,
-      "elapsed": 4.76
+      "elapsed": 8.22
     },
     {
       "prompt": "what files are in the workspace",
@@ -43,7 +43,7 @@
       "actual": "list_directory",
       "category": "filesystem",
       "correct": true,
-      "elapsed": 6.09
+      "elapsed": 4.54
     },
     {
       "prompt": "read notes.txt",
@@ -51,7 +51,7 @@
       "actual": "read_file",
       "category": "filesystem",
       "correct": true,
-      "elapsed": 3.59
+      "elapsed": 3.49
     },
     {
       "prompt": "show me the contents of readme.txt",
@@ -59,7 +59,7 @@
       "actual": "read_file",
       "category": "filesystem",
       "correct": true,
-      "elapsed": 3.46
+      "elapsed": 3.11
     },
     {
       "prompt": "find all .py files in the workspace",
@@ -67,7 +67,7 @@
       "actual": "search_files",
       "category": "filesystem",
       "correct": true,
-      "elapsed": 4.1
+      "elapsed": 3.49
     },
     {
       "prompt": "write hello to test.txt",
@@ -75,7 +75,7 @@
       "actual": "write_file",
       "category": "filesystem",
       "correct": true,
-      "elapsed": 3.78
+      "elapsed": 3.21
     },
     {
       "prompt": "create a file called output.md with the text hi",
@@ -83,7 +83,7 @@
       "actual": "write_file",
       "category": "filesystem",
       "correct": true,
-      "elapsed": 6.09
+      "elapsed": 3.35
     },
     {
       "prompt": "list my github repos",
@@ -91,7 +91,7 @@
       "actual": "list_repos",
       "category": "github",
       "correct": true,
-      "elapsed": 5.73
+      "elapsed": 5.47
     },
     {
       "prompt": "what repositories do I have",
@@ -99,7 +99,7 @@
       "actual": "list_repos",
       "category": "github",
       "correct": true,
-      "elapsed": 7.38
+      "elapsed": 5.67
     },
     {
       "prompt": "check my github notifications",
@@ -107,7 +107,7 @@
       "actual": "list_notifications",
       "category": "github",
       "correct": true,
-      "elapsed": 4.99
+      "elapsed": 3.97
     },
     {
       "prompt": "any unread github notifications",
@@ -115,7 +115,7 @@
       "actual": "list_notifications",
       "category": "github",
       "correct": true,
-      "elapsed": 6.99
+      "elapsed": 4.28
     },
     {
       "prompt": "list recent commits",
@@ -123,7 +123,7 @@
       "actual": "list_commits",
       "category": "github",
       "correct": true,
-      "elapsed": 8.09
+      "elapsed": 4.57
     },
     {
       "prompt": "mark all notifications as read",
@@ -131,7 +131,7 @@
       "actual": "mark_all_notifications_read",
       "category": "github",
       "correct": true,
-      "elapsed": 4.83
+      "elapsed": 3.02
     },
     {
       "prompt": "search the web for quantum computing news",
@@ -139,7 +139,7 @@
       "actual": "web_search",
       "category": "web",
       "correct": true,
-      "elapsed": 13.15
+      "elapsed": 14.81
     },
     {
       "prompt": "look up the Fermi paradox",
@@ -147,7 +147,7 @@
       "actual": "search_wikipedia",
       "category": "web",
       "correct": true,
-      "elapsed": 9.62
+      "elapsed": 10.87
     },
     {
       "prompt": "what does wikipedia say about the Battle of Hastings",
@@ -155,7 +155,7 @@
       "actual": "search_wikipedia",
       "category": "web",
       "correct": false,
-      "elapsed": 18.15
+      "elapsed": 7.94
     },
     {
       "prompt": "list my connected codebases",
@@ -163,7 +163,7 @@
       "actual": "list_codebases",
       "category": "codebase",
       "correct": true,
-      "elapsed": 3.36
+      "elapsed": 5.18
     },
     {
       "prompt": "show me the tree of my codebase",
@@ -171,7 +171,7 @@
       "actual": "list_codebases",
       "category": "codebase",
       "correct": false,
-      "elapsed": 4.71
+      "elapsed": 3.89
     },
     {
       "prompt": "find the authenticate function",
@@ -179,7 +179,7 @@
       "actual": "codebase_symbols",
       "category": "codebase",
       "correct": false,
-      "elapsed": 30.52
+      "elapsed": 16.54
     },
     {
       "prompt": "list my last 5 emails",
@@ -187,7 +187,7 @@
       "actual": "list_emails",
       "category": "email",
       "correct": true,
-      "elapsed": 17.19
+      "elapsed": 18.25
     },
     {
       "prompt": "what's in my inbox",
@@ -195,7 +195,7 @@
       "actual": "list_emails",
       "category": "email",
       "correct": true,
-      "elapsed": 29.06
+      "elapsed": 31.38
     },
     {
       "prompt": "send an email to test@example.com saying hello",
@@ -203,7 +203,7 @@
       "actual": "send_email",
       "category": "email",
       "correct": true,
-      "elapsed": 3.82
+      "elapsed": 3.9
     },
     {
       "prompt": "hello",
@@ -211,7 +211,7 @@
       "actual": null,
       "category": "conversational",
       "correct": true,
-      "elapsed": 2.9
+      "elapsed": 5.92
     },
     {
       "prompt": "what is 2 + 2",
@@ -219,7 +219,7 @@
       "actual": null,
       "category": "conversational",
       "correct": true,
-      "elapsed": 2.52
+      "elapsed": 2.42
     }
   ]
 }

@@ -4,11 +4,13 @@ from typing import Tuple
 
 
 LIMITS = {
-    "search": (20, 60),
+    "search_files": (20, 60),
     "write_file": (20, 60),
     "create_issue": (5, 60),
     "comment_on_issue": (5, 60),
     "list_notifications": (15, 60),
+    "send_email": (5, 60),
+    "reply_to_email": (5, 60),
 }
 DEFAULT = (30, 60)
 

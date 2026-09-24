@@ -11,6 +11,7 @@ class ChatResponse(BaseModel):
     reply: str
     tool_calls: List[Dict[str, Any]] = []
     session_id: str
+    secret_saved: Optional[str] = None
 
 
 class StatusResponse(BaseModel):
