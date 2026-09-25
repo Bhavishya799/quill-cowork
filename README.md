@@ -7,6 +7,15 @@ Uses Ollama for inference, FastAPI for the backend, and a single-file HTML
 frontend. Wraps an abliterated 4B model in a layered safety architecture —
 eight layers enforced in code, two at the prompt level.
 
+## ⚠️ Safety notice
+
+Quill-Cowork runs an abliterated (uncensored) language model with
+filesystem, email, and GitHub access. It is designed for single-user,
+trusted-machine use. Do not expose it to a shared network or the public
+internet without adding an authentication layer. The model will comply
+with requests that aligned models refuse. You are responsible for what
+it does.
+
 ## Status
 
 Early prototype. Functional end-to-end. Tool-selection accuracy is 87.5%
