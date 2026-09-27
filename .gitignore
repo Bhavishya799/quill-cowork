@@ -22,3 +22,8 @@ backend/dump.py
 
 # Workspace user data (belt and braces — dir already ignored)
 workspace/
+# Code dumps (contain .env secrets)
+codebase_dump.txt
+mycodebase.txt
+check_filter.py
+show_fails.py

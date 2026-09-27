@@ -37,15 +37,7 @@ def _resolve(rel: str, write: bool = False) -> Path:
 
     p = Path(raw).expanduser()
     if not p.is_absolute():
-        candidate = (WORKSPACE / raw).resolve()
-        if candidate.exists():
-            p = candidate
-        else:
-            bare = (WORKSPACE / p.name).resolve()
-            if bare.exists() and p.parent == Path("."):
-                p = bare
-            else:
-                p = candidate
+        p = (WORKSPACE / raw).resolve()
     else:
         p = p.resolve()
 
@@ -69,16 +61,13 @@ def _resolve(rel: str, write: bool = False) -> Path:
 @tool
 def list_directory(path: str = ".") -> str:
     """List files and folders in a directory inside the workspace or a granted folder.
-    Defaults to the workspace root. Use '.' for the workspace root. Do not
-    pass '/workspace' — that is not a real path on this system."""
+    Defaults to the workspace root. Use '.' for the workspace root."""
     try:
         p = _resolve(path)
     except ValueError as e:
-        return (f"cannot list '{path}': {e}. "
-                f"Use '.' to list the workspace root.")
+        return (f"cannot list '{path}': {e}. Use '.' to list the workspace root.")
     if not p.exists():
-        return (f"path does not exist: {path} "
-                f"(resolved to {p}). Use '.' to list the workspace root.")
+        return f"path does not exist: {path} (resolved to {p})"
     if not p.is_dir():
         return f"not a directory: {path} (resolved to {p})"
     try:
@@ -91,8 +80,7 @@ def list_directory(path: str = ".") -> str:
 
 @tool
 def read_file(path: str) -> str:
-    """Read a text file inside the workspace or a granted folder.
-    Pass a relative path like 'notes.txt' or 'subfolder/file.txt'."""
+    """Read a text file inside the workspace or a granted folder."""
     try:
         p = _resolve(path)
     except ValueError as e:
@@ -109,8 +97,7 @@ def read_file(path: str) -> str:
 
 @tool(destructive=True)
 def write_file(path: str, content: str) -> str:
-    """Write content to a file in the workspace or a granted folder.
-    Overwrites if the file already exists."""
+    """Write content to a file in the workspace or a granted folder."""
     try:
         p = _resolve(path, write=True)
     except ValueError as e:
@@ -122,8 +109,7 @@ def write_file(path: str, content: str) -> str:
 
 @tool
 def search_files(pattern: str, path: str = ".") -> str:
-    """Search for files matching a glob pattern inside the workspace
-    or a granted folder. path defaults to the workspace root."""
+    """Search for files matching a glob pattern."""
     try:
         base = _resolve(path)
     except ValueError as e:

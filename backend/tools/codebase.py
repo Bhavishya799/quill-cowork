@@ -1,8 +1,14 @@
-"""Codebase tools — connect, index, search, read, write, git."""
+"""Codebase tools — connect, index, search, read, write, patch, git.
+
+The heavy lifting lives in backend/codebase.py (imported as cb).
+This file exposes the tool wrappers the model sees and the connector
+manifest for the sidebar.
+"""
 import os
-import subprocess
 import shutil
+import subprocess
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -34,6 +40,10 @@ class CodebaseConnector:
     pass
 
 
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+
 def _safe(name: str) -> str:
     return "".join(c for c in str(name) if c.isalnum() or c in "-_.").strip("-_.")
 
@@ -51,6 +61,9 @@ def _github_token() -> str:
 
 
 def _inject_token(url: str) -> str:
+    """Embed a token in the URL for cloning a private repo over HTTPS.
+    Only used during clone; the URL never persists in the git config
+    because the repository is freshly created at the destination."""
     token = _github_token()
     if not token or not url.startswith("https://github.com/"):
         return url
@@ -106,7 +119,7 @@ def _safe_extract_zip(zip_path: Path, dest: Path) -> str:
             total_bytes += info.file_size
             if total_bytes > MAX_UNCOMPRESSED_BYTES:
                 return (f"refused: uncompressed size exceeds "
-                        f"{MAX_UNCOMPRESSED_BYTES // (1024*1024)} MB")
+                        f"{MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB")
             count += 1
             if count > MAX_ENTRIES:
                 return f"refused: more than {MAX_ENTRIES} files"
@@ -159,7 +172,7 @@ def _safe_extract_tar(tar_path: Path, dest: Path) -> str:
             total_bytes += member.size
             if total_bytes > MAX_UNCOMPRESSED_BYTES:
                 return (f"refused: uncompressed size exceeds "
-                        f"{MAX_UNCOMPRESSED_BYTES // (1024*1024)} MB")
+                        f"{MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB")
             count += 1
             if count > MAX_ENTRIES:
                 return f"refused: more than {MAX_ENTRIES} files"
@@ -184,8 +197,8 @@ def _safe_extract_tar(tar_path: Path, dest: Path) -> str:
 
 
 def _flatten_single_root(dest: Path) -> Path:
-    """If the archive contains a single top-level directory (the common case
-    for GitHub zip exports), descend into it so ingestion isn't nested."""
+    """If the archive contains one top-level folder (common for GitHub
+    zip exports), descend into it so the tree isn't nested twice."""
     try:
         entries = [e for e in dest.iterdir() if e.name not in ("__MACOSX",)]
     except Exception:
@@ -195,13 +208,17 @@ def _flatten_single_root(dest: Path) -> Path:
     return dest
 
 
+# ---------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------
+
 @tool(destructive=True)
 def connect_codebase(source: str, name: str = "") -> str:
     """Connect to a codebase: read it, index it, and make it searchable.
     source can be:
       - a local folder (e.g. D:/Projects/myapp)
       - a GitHub URL (will be cloned first)
-      - a .zip / .tar / .tar.gz / .tgz archive on disk (will be extracted)
+      - a .zip / .tar / .tar.gz / .tgz archive (will be extracted)
     The user is prompted to approve before the codebase is read."""
     src = (source or "").strip()
     if not src:
@@ -209,7 +226,7 @@ def connect_codebase(source: str, name: str = "") -> str:
 
     root_path = None
 
-    # GitHub URL
+    # ---- GitHub URL ----
     if src.startswith("http://") or src.startswith("https://"):
         ok, reason = check_egress(src)
         if not ok:
@@ -223,15 +240,26 @@ def connect_codebase(source: str, name: str = "") -> str:
             try:
                 r = subprocess.run(
                     ["git", "clone", "--depth", "1", _inject_token(src), str(dest)],
-                    capture_output=True, text=True, timeout=180
+                    capture_output=True, text=True, timeout=180,
                 )
             except subprocess.TimeoutExpired:
                 return "connect failed: clone timeout"
+            except FileNotFoundError:
+                return "connect failed: git not found on PATH"
             if r.returncode != 0:
                 return f"clone failed: {(r.stderr or r.stdout).strip()[:300]}"
+            # Clear any embedded token from the clone's remote URL so it
+            # doesn't sit in .git/config at rest.
+            try:
+                subprocess.run(
+                    ["git", "remote", "set-url", "origin", src],
+                    cwd=dest, capture_output=True, text=True, timeout=10,
+                )
+            except Exception:
+                pass
         root_path = dest
 
-    # Local archive
+    # ---- Local archive or folder ----
     else:
         p = Path(src).expanduser().resolve()
         if not p.exists():
@@ -251,7 +279,7 @@ def connect_codebase(source: str, name: str = "") -> str:
             if not _is_within(EXTRACTS_DIR, dest):
                 return "connect failed: bad extract path"
             if dest.exists():
-                shutil.rmtree(dest)
+                shutil.rmtree(dest, ignore_errors=True)
             dest.mkdir(parents=True, exist_ok=True)
 
             if is_zip:
@@ -297,18 +325,25 @@ def list_codebases() -> str:
         return "no codebases connected yet"
     lines = []
     for e in entries:
-        lines.append(f"- {e['name']}  ({e['file_count']} files, {e['total_bytes']:,} bytes)  root: {e['root']}")
+        lines.append(
+            f"- {e['name']}  ({e['file_count']} files, "
+            f"{e['total_bytes']:,} bytes)  root: {e['root']}"
+        )
     return "\n".join(lines)
 
 
 @tool(destructive=True)
 def disconnect_codebase(name: str) -> str:
-    """Remove the index for a connected codebase. Does not delete the actual
-    files — only the searchable index."""
+    """Remove the index for a connected codebase. Does not delete the
+    actual files — only the searchable index."""
     if cb.disconnect(name):
         return f"disconnected: {name}"
     return f"no codebase named '{name}'"
 
+
+# ---------------------------------------------------------------------
+# Read / navigate
+# ---------------------------------------------------------------------
 
 @tool
 def codebase_info(name: str) -> str:
@@ -351,30 +386,15 @@ def codebase_read(name: str, path: str) -> str:
     return cb.read_file(name, path)
 
 
-@tool(destructive=True)
-def codebase_write(name: str, path: str, content: str) -> str:
-    """Write or overwrite a file inside a connected codebase.
-    The user will be prompted to approve before the write."""
-    return cb.write_file(name, path, content)
+@tool
+def codebase_read_all(name: str) -> str:
+    """Read the entire indexed codebase in a single call.
+    Returns every file with path headers, up to ~200 KB.
+    Use this when the user asks you to review, audit, analyze, or suggest
+    changes to a codebase. Prefer this over calling codebase_read once per
+    file — that wastes iterations."""
+    return cb.read_all(name)
 
-
-@tool(destructive=True)
-def codebase_git(name: str, action: str, message: str = "", branch: str = "") -> str:
-    """Run a git operation on a connected codebase.
-    action: 'status' | 'commit' | 'push'.
-    For 'commit' provide a message. For 'push' optionally provide a branch.
-    Push requires GITHUB_PERSONAL_ACCESS_TOKEN in the vault for private repos."""
-    a = (action or "").strip().lower()
-    if a == "status":
-        return cb.git_status(name)
-    if a == "commit":
-        if not message:
-            return "commit requires a message"
-        return cb.git_commit(name, message)
-    if a == "push":
-        return cb.git_push(name, branch=branch)
-    return f"unknown action: {action}"
-    
 
 @tool
 def codebase_symbols(name: str, kind: str = "all") -> str:
@@ -401,6 +421,17 @@ def codebase_imports(name: str, path: str, direction: str = "out") -> str:
     return cb.imports(name, path, direction=direction)
 
 
+# ---------------------------------------------------------------------
+# Edit
+# ---------------------------------------------------------------------
+
+@tool(destructive=True)
+def codebase_write(name: str, path: str, content: str) -> str:
+    """Write or overwrite a file inside a connected codebase.
+    The user will be prompted to approve before the write."""
+    return cb.write_file(name, path, content)
+
+
 @tool(destructive=True)
 def codebase_patch(name: str, path: str, find: str, replace: str,
                    count: int = 1) -> str:
@@ -410,3 +441,78 @@ def codebase_patch(name: str, path: str, find: str, replace: str,
     codebase_write for small edits — it only needs the surrounding lines,
     not the whole file."""
     return cb.patch_file(name, path, find, replace, count=count)
+
+
+# ---------------------------------------------------------------------
+# Git
+# ---------------------------------------------------------------------
+
+def _write_askpass(token: str) -> str:
+    """Write a short-lived askpass script OUTSIDE the repo so `git add -A`
+    cannot stage it. Returns the path. Caller deletes it in a finally."""
+    fd, path = tempfile.mkstemp(prefix="quill-askpass-", suffix=".cmd")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write("@echo off\r\n")
+        f.write(f"echo {token}\r\n")
+    try:
+        os.chmod(path, 0o600)
+    except Exception:
+        pass
+    return path
+
+
+def _git_push(name: str, remote: str, branch: str) -> str:
+    meta = cb.get_meta(name)
+    if not meta:
+        return f"no codebase named '{name}'"
+    root = Path(meta["root"])
+    if not (root / ".git").exists():
+        return "not a git repository"
+
+    token = _github_token()
+    env = os.environ.copy()
+    askpass_path = None
+
+    if token:
+        askpass_path = _write_askpass(token)
+        env["GIT_ASKPASS"] = askpass_path
+        env["GIT_TERMINAL_PROMPT"] = "0"
+
+    cmd = ["git", "push", remote]
+    if branch:
+        cmd.append(branch)
+
+    try:
+        r = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
+                           timeout=120, env=env)
+    except subprocess.TimeoutExpired:
+        return "push failed: timeout"
+    finally:
+        if askpass_path:
+            try:
+                os.unlink(askpass_path)
+            except Exception:
+                pass
+
+    if r.returncode != 0:
+        return f"push failed: {(r.stdout + r.stderr).strip()[:400]}"
+    return (r.stdout or r.stderr or "pushed").strip()[:400]
+
+
+@tool(destructive=True)
+def codebase_git(name: str, action: str, message: str = "",
+                 branch: str = "") -> str:
+    """Run a git operation on a connected codebase.
+    action: 'status' | 'commit' | 'push'.
+    For 'commit' provide a message. For 'push' optionally provide a branch.
+    Push uses GITHUB_PERSONAL_ACCESS_TOKEN from the vault if available."""
+    a = (action or "").strip().lower()
+    if a == "status":
+        return cb.git_status(name)
+    if a == "commit":
+        if not message:
+            return "commit requires a message"
+        return cb.git_commit(name, message)
+    if a == "push":
+        return _git_push(name, remote="origin", branch=branch)
+    return f"unknown action: {action}"

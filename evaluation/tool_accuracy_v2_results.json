@@ -1,0 +1,513 @@
+{
+  "total": 60,
+  "correct": 55,
+  "accuracy": 0.9167,
+  "by_category": {
+    "filesystem": {
+      "correct": 10,
+      "total": 10
+    },
+    "github": {
+      "correct": 9,
+      "total": 10
+    },
+    "web": {
+      "correct": 9,
+      "total": 10
+    },
+    "codebase": {
+      "correct": 9,
+      "total": 10
+    },
+    "email": {
+      "correct": 10,
+      "total": 10
+    },
+    "conversational": {
+      "correct": 8,
+      "total": 10
+    }
+  },
+  "results": [
+    {
+      "prompt": "list my workspace files",
+      "expected": "list_directory",
+      "actual": "list_directory",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 5.67
+    },
+    {
+      "prompt": "what files are in the workspace",
+      "expected": "list_directory",
+      "actual": "list_directory",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 5.27
+    },
+    {
+      "prompt": "show me the files in the workspace root",
+      "expected": "list_directory",
+      "actual": "list_directory",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 3.6
+    },
+    {
+      "prompt": "list the folder structure",
+      "expected": "list_directory",
+      "actual": "list_directory",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 3.41
+    },
+    {
+      "prompt": "read notes.txt",
+      "expected": "read_file",
+      "actual": "read_file",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 2.81
+    },
+    {
+      "prompt": "show me the contents of readme.txt",
+      "expected": "read_file",
+      "actual": "read_file",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 2.97
+    },
+    {
+      "prompt": "open the file test.txt",
+      "expected": "read_file",
+      "actual": "read_file",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 2.56
+    },
+    {
+      "prompt": "find all .py files in the workspace",
+      "expected": "search_files",
+      "actual": "search_files",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 2.85
+    },
+    {
+      "prompt": "search for markdown files",
+      "expected": "search_files",
+      "actual": "search_files",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 2.79
+    },
+    {
+      "prompt": "write hello to output.txt",
+      "expected": "write_file",
+      "actual": "write_file",
+      "category": "filesystem",
+      "correct": true,
+      "elapsed": 2.87
+    },
+    {
+      "prompt": "list my github repos",
+      "expected": "list_repos",
+      "actual": "list_repos",
+      "category": "github",
+      "correct": true,
+      "elapsed": 5.31
+    },
+    {
+      "prompt": "what repositories do I have",
+      "expected": "list_repos",
+      "actual": "list_repos",
+      "category": "github",
+      "correct": true,
+      "elapsed": 4.26
+    },
+    {
+      "prompt": "show my github repositories",
+      "expected": "list_repos",
+      "actual": "list_repos",
+      "category": "github",
+      "correct": true,
+      "elapsed": 4.12
+    },
+    {
+      "prompt": "check my github notifications",
+      "expected": "list_notifications",
+      "actual": "list_notifications",
+      "category": "github",
+      "correct": true,
+      "elapsed": 3.76
+    },
+    {
+      "prompt": "any unread github notifications",
+      "expected": "list_notifications",
+      "actual": "list_notifications",
+      "category": "github",
+      "correct": true,
+      "elapsed": 3.29
+    },
+    {
+      "prompt": "what's new on github",
+      "expected": "list_notifications",
+      "actual": "list_repos",
+      "category": "github",
+      "correct": false,
+      "elapsed": 8.53
+    },
+    {
+      "prompt": "list recent commits",
+      "expected": "list_commits",
+      "actual": "list_commits",
+      "category": "github",
+      "correct": true,
+      "elapsed": 4.35
+    },
+    {
+      "prompt": "show me the commits on main",
+      "expected": "list_commits",
+      "actual": "list_commits",
+      "category": "github",
+      "correct": true,
+      "elapsed": 6.63
+    },
+    {
+      "prompt": "mark all notifications as read",
+      "expected": "mark_all_notifications_read",
+      "actual": "mark_all_notifications_read",
+      "category": "github",
+      "correct": true,
+      "elapsed": 2.8
+    },
+    {
+      "prompt": "list open issues",
+      "expected": "list_issues",
+      "actual": "list_issues",
+      "category": "github",
+      "correct": true,
+      "elapsed": 4.05
+    },
+    {
+      "prompt": "search the web for quantum computing news",
+      "expected": "web_search",
+      "actual": "web_search",
+      "category": "web",
+      "correct": true,
+      "elapsed": 9.95
+    },
+    {
+      "prompt": "google the latest AI developments",
+      "expected": "web_search",
+      "actual": "web_search",
+      "category": "web",
+      "correct": true,
+      "elapsed": 12.53
+    },
+    {
+      "prompt": "look up recent news about AMD GPUs",
+      "expected": "web_search",
+      "actual": "web_search",
+      "category": "web",
+      "correct": true,
+      "elapsed": 10.68
+    },
+    {
+      "prompt": "search the web for python tutorials",
+      "expected": "web_search",
+      "actual": "web_search",
+      "category": "web",
+      "correct": true,
+      "elapsed": 10.03
+    },
+    {
+      "prompt": "look up the Fermi paradox on wikipedia",
+      "expected": "search_wikipedia",
+      "actual": "search_wikipedia",
+      "category": "web",
+      "correct": true,
+      "elapsed": 11.54
+    },
+    {
+      "prompt": "search wikipedia for quantum computing",
+      "expected": "search_wikipedia",
+      "actual": "search_wikipedia",
+      "category": "web",
+      "correct": true,
+      "elapsed": 4.24
+    },
+    {
+      "prompt": "what does wikipedia say about the Battle of Hastings",
+      "expected": "get_wikipedia_article",
+      "actual": "get_wikipedia_article",
+      "category": "web",
+      "correct": true,
+      "elapsed": 4.36
+    },
+    {
+      "prompt": "read the wikipedia article about Alan Turing",
+      "expected": "get_wikipedia_article",
+      "actual": "get_wikipedia_article",
+      "category": "web",
+      "correct": true,
+      "elapsed": 4.49
+    },
+    {
+      "prompt": "fetch the page at https://example.com",
+      "expected": "fetch_page",
+      "actual": "fetch_page",
+      "category": "web",
+      "correct": true,
+      "elapsed": 2.88
+    },
+    {
+      "prompt": "download the contents of that URL",
+      "expected": "fetch_page",
+      "actual": null,
+      "category": "web",
+      "correct": false,
+      "elapsed": 3.94
+    },
+    {
+      "prompt": "list my connected codebases",
+      "expected": "list_codebases",
+      "actual": "list_codebases",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.03
+    },
+    {
+      "prompt": "what codebases are connected",
+      "expected": "list_codebases",
+      "actual": "list_codebases",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.19
+    },
+    {
+      "prompt": "show me the tree of my codebase",
+      "expected": "codebase_tree",
+      "actual": "codebase_tree",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.71
+    },
+    {
+      "prompt": "what files are in the codebase",
+      "expected": "codebase_tree",
+      "actual": "list_codebases",
+      "category": "codebase",
+      "correct": false,
+      "elapsed": 5.05
+    },
+    {
+      "prompt": "find the authenticate function",
+      "expected": "codebase_find_symbol",
+      "actual": "codebase_find_symbol",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.59
+    },
+    {
+      "prompt": "where is the User class defined",
+      "expected": "codebase_find_symbol",
+      "actual": "codebase_find_symbol",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.05
+    },
+    {
+      "prompt": "list all functions in the codebase",
+      "expected": "codebase_symbols",
+      "actual": "codebase_symbols",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.36
+    },
+    {
+      "prompt": "search the codebase for 'TODO'",
+      "expected": "codebase_search",
+      "actual": "codebase_search",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.5
+    },
+    {
+      "prompt": "read the file backend/main.py",
+      "expected": "codebase_read",
+      "actual": "codebase_read",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.44
+    },
+    {
+      "prompt": "what does backend/agent.py import",
+      "expected": "codebase_imports",
+      "actual": "codebase_imports",
+      "category": "codebase",
+      "correct": true,
+      "elapsed": 3.27
+    },
+    {
+      "prompt": "list my last 5 emails",
+      "expected": "list_emails",
+      "actual": "list_emails",
+      "category": "email",
+      "correct": true,
+      "elapsed": 15.04
+    },
+    {
+      "prompt": "what's in my inbox",
+      "expected": "list_emails",
+      "actual": "list_emails",
+      "category": "email",
+      "correct": true,
+      "elapsed": 20.53
+    },
+    {
+      "prompt": "show me my recent emails",
+      "expected": "list_emails",
+      "actual": "list_emails",
+      "category": "email",
+      "correct": true,
+      "elapsed": 11.43
+    },
+    {
+      "prompt": "any unread emails",
+      "expected": "list_emails",
+      "actual": "list_emails",
+      "category": "email",
+      "correct": true,
+      "elapsed": 11.58
+    },
+    {
+      "prompt": "send an email to test@example.com saying hello",
+      "expected": "send_email",
+      "actual": "send_email",
+      "category": "email",
+      "correct": true,
+      "elapsed": 3.22
+    },
+    {
+      "prompt": "email my team about the meeting",
+      "expected": "send_email",
+      "actual": "send_email",
+      "category": "email",
+      "correct": true,
+      "elapsed": 3.69
+    },
+    {
+      "prompt": "create a draft reply to the last email",
+      "expected": "create_draft",
+      "actual": "create_draft",
+      "category": "email",
+      "correct": true,
+      "elapsed": 4.65
+    },
+    {
+      "prompt": "save a draft email to my boss",
+      "expected": "create_draft",
+      "actual": "create_draft",
+      "category": "email",
+      "correct": true,
+      "elapsed": 4.39
+    },
+    {
+      "prompt": "reply to the last email",
+      "expected": "reply_to_email",
+      "actual": "reply_to_email",
+      "category": "email",
+      "correct": true,
+      "elapsed": 3.08
+    },
+    {
+      "prompt": "read the email from alice",
+      "expected": "get_email",
+      "actual": "get_email",
+      "category": "email",
+      "correct": true,
+      "elapsed": 4.66
+    },
+    {
+      "prompt": "hello",
+      "expected": null,
+      "actual": null,
+      "category": "conversational",
+      "correct": true,
+      "elapsed": 3.96
+    },
+    {
+      "prompt": "what is 2 + 2",
+      "expected": null,
+      "actual": null,
+      "category": "conversational",
+      "correct": true,
+      "elapsed": 2.3
+    },
+    {
+      "prompt": "tell me a joke",
+      "expected": null,
+      "actual": null,
+      "category": "conversational",
+      "correct": true,
+      "elapsed": 2.56
+    },
+    {
+      "prompt": "how are you",
+      "expected": null,
+      "actual": null,
+      "category": "conversational",
+      "correct": true,
+      "elapsed": 2.56
+    },
+    {
+      "prompt": "what's the capital of France",
+      "expected": null,
+      "actual": null,
+      "category": "conversational",
+      "correct": true,
+      "elapsed": 2.42
+    },
+    {
+      "prompt": "explain how HTTPS works",
+      "expected": null,
+      "actual": "search_wikipedia",
+      "category": "conversational",
+      "correct": false,
+      "elapsed": 9.31
+    },
+    {
+      "prompt": "write a short poem about autumn",
+      "expected": null,
+      "actual": null,
+      "category": "conversational",
+      "correct": true,
+      "elapsed": 3.45
+    },
+    {
+      "prompt": "what's a good name for a pet cat",
+      "expected": null,
+      "actual": null,
+      "category": "conversational",
+      "correct": true,
+      "elapsed": 3.19
+    },
+    {
+      "prompt": "summarize the concept of recursion",
+      "expected": null,
+      "actual": "search_wikipedia",
+      "category": "conversational",
+      "correct": false,
+      "elapsed": 6.0
+    },
+    {
+      "prompt": "thanks",
+      "expected": null,
+      "actual": null,
+      "category": "conversational",
+      "correct": true,
+      "elapsed": 2.51
+    }
+  ]
+}

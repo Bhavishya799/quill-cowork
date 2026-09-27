@@ -1,5 +1,6 @@
 """Folder grants — user-approved directories the AI can read/write."""
 import json
+import re
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -10,14 +11,12 @@ from vault import vault
 GRANTS_KEY = "QUILL_FOLDER_GRANTS"
 
 HARD_REFUSE = [
-    ".ssh", "/.ssh", "\\.ssh",
-    ".aws", "/.aws", "\\.aws",
-    ".gnupg", ".kube",
+    ".ssh", ".aws", ".gnupg", ".kube",
     "AppData/Local/Google/Chrome/User Data",
     "AppData/Local/Microsoft/Edge/User Data",
     "AppData/Roaming/Mozilla/Firefox/Profiles",
-    "C:/Windows", "C:\\Windows",
-    "/etc/shadow", "/etc/passwd", "/root/.bash_history",
+    "Windows", "System32",
+    "etc/shadow", "etc/passwd",
     "Cookies", "Login Data", "keychain",
     "id_rsa", "id_ed25519", "id_ecdsa",
 ]
@@ -92,10 +91,19 @@ def remove_grant(path: str) -> bool:
     return False
 
 
+def _path_components(path_str: str) -> set:
+    parts = re.split(r"[\\/]+", str(path_str))
+    return {p.lower() for p in parts if p}
+
+
 def _matches(path_str: str, needles: List[str]) -> Optional[str]:
-    lower = str(path_str).lower().replace("\\", "/")
+    """Match needle as a whole path component, not a substring.
+    Avoids '.ssh' matching '.ssh-backup'."""
+    components = _path_components(path_str)
     for needle in needles:
-        if needle.lower().replace("\\", "/") in lower:
+        # Take the last component of the needle (so nested needles still work)
+        needle_leaf = needle.replace("\\", "/").split("/")[-1].lower()
+        if needle_leaf and needle_leaf in components:
             return needle
     return None
 

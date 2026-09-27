@@ -355,28 +355,42 @@ def grep(name: str, pattern: str, limit: int = 40) -> str:
 
 
 def read_file(name: str, path: str, max_chars: int = 8000) -> str:
+    """Read a single file from the connected codebase index."""
     files = index_dir(name) / "files.jsonl"
-    want = path.strip().lstrip("/\\")
-    if files.exists():
+    if not files.exists():
+        return f"no index for '{name}'"
+    want = str(path or "").strip().lstrip("/\\").replace("\\", "/")
+    if not want:
+        return "empty path"
+
+    # Index lookup first
+    try:
         with files.open("r", encoding="utf-8") as f:
             for line in f:
                 try:
                     rec = json.loads(line)
                 except Exception:
                     continue
-                if rec["path"] == want:
-                    c = rec["content"]
-                    if len(c) > max_chars:
-                        return c[:max_chars] + f"\n… (truncated, {len(c)} chars total)"
-                    return c
+                if rec.get("path", "").replace("\\", "/") == want:
+                    content = rec.get("content", "")
+                    if len(content) > max_chars:
+                        return content[:max_chars] + (
+                            f"\n… (truncated, {len(content)} chars total)"
+                        )
+                    return content
+    except Exception as e:
+        return f"read failed: {e}"
+
+    # Fall back to the file on disk if the index is stale
     meta = get_meta(name)
     if meta:
         disk = Path(meta["root"]) / want
-        if disk.is_file():
-            try:
+        try:
+            if disk.is_file():
                 return disk.read_text(encoding="utf-8", errors="replace")[:max_chars]
-            except Exception as e:
-                return f"read failed: {e}"
+        except Exception as e:
+            return f"read failed: {e}"
+
     return f"file not found in index: {path}"
 
 
@@ -468,30 +482,39 @@ def git_push(name: str, remote: str = "origin", branch: str = "") -> str:
         return "not a git repository"
 
     token = vault.get_safe("GITHUB_PERSONAL_ACCESS_TOKEN")
+    env = os.environ.copy()
+    askpass_path = None
+
     if token:
-        try:
-            r = subprocess.run(["git", "remote", "get-url", remote],
-                                cwd=root, capture_output=True, text=True, timeout=10)
-            url = (r.stdout or "").strip()
-            if "github.com" in url and "@" not in url.split("github.com")[0]:
-                new_url = url.replace("https://github.com/",
-                                       f"https://{token}@github.com/", 1)
-                subprocess.run(["git", "remote", "set-url", remote, new_url],
-                                cwd=root, capture_output=True, timeout=10)
-        except Exception:
-            pass
+        # Write a short-lived askpass helper that returns the token.
+        # Removed in the finally block so it never persists.
+        askpass_dir = root / ".git" / "quill"
+        askpass_dir.mkdir(parents=True, exist_ok=True)
+        askpass_path = askpass_dir / "askpass.cmd"
+        askpass_path.write_text(
+            f"@echo off\r\necho {token}\r\n", encoding="utf-8"
+        )
+        env["GIT_ASKPASS"] = str(askpass_path)
+        env["GIT_TERMINAL_PROMPT"] = "0"
 
     cmd = ["git", "push", remote]
     if branch:
         cmd.append(branch)
+
     try:
-        r = subprocess.run(cmd, cwd=root, capture_output=True, text=True, timeout=120)
-        if r.returncode != 0:
-            return f"push failed: {(r.stdout + r.stderr).strip()[:400]}"
-        return (r.stdout or r.stderr or "pushed").strip()[:400]
-    except Exception as e:
-        return f"git push failed: {e}"
-        
+        r = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
+                           timeout=120, env=env)
+    finally:
+        if askpass_path and askpass_path.exists():
+            try:
+                askpass_path.unlink()
+                askpass_path.parent.rmdir()
+            except Exception:
+                pass
+
+    if r.returncode != 0:
+        return f"push failed: {(r.stdout + r.stderr).strip()[:400]}"
+    return (r.stdout or r.stderr or "pushed").strip()[:400]
 
 # =====================================================================
 # Phase One: symbols, imports, patch

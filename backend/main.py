@@ -10,15 +10,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Request, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse
+from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from config import settings
 from schemas import ChatRequest, ChatResponse, StatusResponse
-from agent import run_agent
+from agent import run_agent, clear_working_set
 from monitor import monitor
 from safety import is_blocked, REFUSAL_MESSAGE
 from tools.registry import get_ollama_tools, list_tools, get_connectors, call_tool
@@ -26,6 +26,7 @@ from providers import list_providers, get_provider
 from audit import recent as audit_recent, stats as audit_stats
 from network import allowlist
 from secret_store import detect as detect_secret, store as store_secret
+import auth
 import oauth
 import grants as grants_mod
 
@@ -34,9 +35,14 @@ SESSIONS: "OrderedDict[str, list]" = OrderedDict()
 SESSION_TS: dict = {}
 SESSION_TTL = 3600
 SESSION_MAX = 500
+HISTORY_MAX = 40
 CURRENT_SLOT = settings.DEFAULT_SLOT
 CURRENT_MODEL: Optional[str] = None
 SELECTION_FILE = Path(__file__).parent / "model_selection.json"
+
+UPLOAD_MAX_BYTES = 500 * 1024 * 1024
+MONITOR_MIN_INTERVAL = 60
+MONITOR_MAX_INTERVAL = 86400
 
 
 def _load_selection():
@@ -71,6 +77,7 @@ def _session_get(sid: str) -> list:
     if ts is None or now - ts > SESSION_TTL:
         SESSIONS.pop(sid, None)
         SESSION_TS.pop(sid, None)
+        clear_working_set(sid)
         return []
     SESSION_TS[sid] = now
     SESSIONS.move_to_end(sid)
@@ -84,12 +91,21 @@ def _session_put(sid: str, history: list):
     while len(SESSIONS) > SESSION_MAX:
         old, _ = SESSIONS.popitem(last=False)
         SESSION_TS.pop(old, None)
+        clear_working_set(old)
 
 
 def _current_model() -> str:
     if CURRENT_MODEL:
         return CURRENT_MODEL
     return settings.slots.get(CURRENT_SLOT, settings.OLLAMA_MODEL)
+
+
+def _model_error_reply(err: Exception, model: str) -> str:
+    msg = str(err)
+    if "not found" in msg.lower() and "model" in msg.lower():
+        return (f"Model `{model}` is not downloaded. Run "
+                f"`ollama pull {model}` or switch to a different slot.")
+    return f"Model error: {msg[:300]}"
 
 
 class SlotSelectRequest(BaseModel):
@@ -119,20 +135,50 @@ class CodebaseDisconnectRequest(BaseModel):
 async def lifespan(app: FastAPI):
     _load_selection()
     print(f"quill: {len(list_tools())} tools, {len(get_connectors())} connectors")
+    print(f"auth: {'enabled' if auth.is_enabled() else 'disabled (no password set)'}")
     yield
     monitor.stop()
 
 
-app = FastAPI(title="Quill-Cowork", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Quill-Cowork", version="0.3.0", lifespan=lifespan)
+
+# ---- CORS: same-origin by default; add extras via env ----
+_default_origins = [f"http://localhost:{settings.PORT}", f"http://127.0.0.1:{settings.PORT}"]
+_extra = os.getenv("CORS_EXTRA_ORIGINS", "")
+_cors_origins = _default_origins + [o.strip() for o in _extra.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
 )
 
+
+# ---- Auth middleware ----
+_PUBLIC_PATHS = {"/login", "/health", "/favicon.ico"}
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    if not auth.is_enabled():
+        return await call_next(request)
+    path = request.url.path
+    if path in _PUBLIC_PATHS or path.startswith("/static"):
+        return await call_next(request)
+    if path.startswith("/oauth/google/callback"):
+        # Google redirects here directly; the state check protects it
+        return await call_next(request)
+    if auth.check_request(request):
+        return await call_next(request)
+    if path == "/" or path.startswith("/api"):
+        return RedirectResponse("/login", status_code=302)
+    return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+
 STATIC_DIR = Path(__file__).parent / "static"
-WORKSPACE = Path(os.getenv("WORKSPACE_ROOT", "D:/Quill-Cowork/workspace"))
+WORKSPACE = Path(settings.WORKSPACE_ROOT)
 UPLOADS_ROOT = WORKSPACE / ".quill" / "uploads"
 
 ATTACHMENT_RE = re.compile(r"\[attached files?:\s*([^\]]+)\]")
@@ -152,6 +198,59 @@ def _auto_codebase_path(message: str) -> Optional[str]:
         if any(lp.endswith(ext) for ext in ARCHIVE_EXTS):
             return p
     return None
+
+
+@app.get("/login")
+async def login_page():
+    return HTMLResponse("""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Quill — Sign in</title>
+<style>
+body{font:15px system-ui;background:#FAF8F4;display:flex;align-items:center;
+justify-content:center;min-height:100vh;margin:0;color:#23211D}
+form{background:#fff;padding:32px;border:1px solid #E0DACE;border-radius:14px;
+box-shadow:0 8px 28px rgba(35,33,29,.08);width:320px}
+h1{font:400 22px/1.2 Newsreader,serif;margin:0 0 18px}
+input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #E0DACE;
+border-radius:8px;font:14px system-ui;margin-bottom:14px}
+button{width:100%;padding:11px;background:#23211D;color:#FAF8F4;border:none;
+border-radius:8px;font:500 14px system-ui;cursor:pointer}
+button:hover{background:#3A3731}
+.err{color:#B4574A;font-size:13px;margin-bottom:10px}
+</style></head><body>
+<form method="POST" action="/login">
+<h1>Quill Cowork</h1>
+<div class="err" id="err"></div>
+<input type="password" name="password" placeholder="Password" autofocus required>
+<button type="submit">Sign in</button>
+</form>
+<script>
+const e = new URLSearchParams(location.search).get('error');
+if (e) document.getElementById('err').textContent = 'Wrong password';
+</script>
+</body></html>""")
+
+
+@app.post("/login")
+async def login_submit(password: str = Form(...)):
+    if not auth.is_enabled():
+        return RedirectResponse("/", status_code=302)
+    if not auth.verify_password(password):
+        return RedirectResponse("/login?error=1", status_code=302)
+    tok = auth.issue_token()
+    resp = RedirectResponse("/", status_code=302)
+    resp.set_cookie(
+        auth.COOKIE_NAME, tok, httponly=True, samesite="lax",
+        max_age=auth.SESSION_TTL, path="/",
+    )
+    return resp
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    auth.revoke_token(request.cookies.get(auth.COOKIE_NAME))
+    resp = RedirectResponse("/login", status_code=302)
+    resp.delete_cookie(auth.COOKIE_NAME, path="/")
+    return resp
 
 
 @app.get("/")
@@ -181,7 +280,7 @@ async def status():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
-    blocked, reason = is_blocked(req.message)
+    blocked, _ = is_blocked(req.message)
     if blocked:
         return ChatResponse(reply=REFUSAL_MESSAGE, tool_calls=[], session_id=req.session_id)
 
@@ -192,7 +291,7 @@ async def chat(req: ChatRequest):
         history = _session_get(req.session_id)
         history.append({"role": "user", "content": f"[user provided {name}]"})
         history.append({"role": "assistant", "content": reply})
-        _session_put(req.session_id, history[-20:])
+        _session_put(req.session_id, history[-HISTORY_MAX:])
         return ChatResponse(reply=reply, tool_calls=[], session_id=req.session_id,
                             secret_saved=name)
 
@@ -206,7 +305,7 @@ async def chat(req: ChatRequest):
         history = _session_get(req.session_id)
         history.append({"role": "user", "content": "[connected codebase from attachment]"})
         history.append({"role": "assistant", "content": result})
-        _session_put(req.session_id, history[-20:])
+        _session_put(req.session_id, history[-HISTORY_MAX:])
         return ChatResponse(
             reply=result,
             tool_calls=[{"tool": "connect_codebase",
@@ -217,14 +316,18 @@ async def chat(req: ChatRequest):
 
     history = _session_get(req.session_id)
     model = _current_model()
-    reply, calls = await run_agent(
-        req.message, history=history, model=model,
-        confirm_callback=None, session_id=req.session_id,
-    )
+    try:
+        reply, calls = await run_agent(
+            req.message, history=history, model=model,
+            confirm_callback=None, session_id=req.session_id,
+        )
+    except Exception as e:
+        reply = _model_error_reply(e, model)
+        calls = []
 
     history.append({"role": "user", "content": req.message})
     history.append({"role": "assistant", "content": reply})
-    _session_put(req.session_id, history[-20:])
+    _session_put(req.session_id, history[-HISTORY_MAX:])
 
     return ChatResponse(reply=reply, tool_calls=calls, session_id=req.session_id)
 
@@ -337,6 +440,7 @@ async def security_layers():
             {"id": "L8", "name": "Network egress allowlist", "enforced": True},
             {"id": "L9", "name": "Prompt injection detector", "enforced": True},
             {"id": "L10", "name": "Secret redaction", "enforced": True},
+            {"id": "L11", "name": "Auth (optional)", "enforced": auth.is_enabled()},
         ]
     }
 
@@ -496,34 +600,49 @@ async def upload_file(file: UploadFile = File(...)):
     session_dir = UPLOADS_ROOT / uuid.uuid4().hex[:10]
     session_dir.mkdir(parents=True, exist_ok=True)
     target = session_dir / safe
+    total = 0
     try:
         with target.open("wb") as out:
-            shutil.copyfileobj(file.file, out, length=1024 * 1024)
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > UPLOAD_MAX_BYTES:
+                    out.close()
+                    try:
+                        target.unlink()
+                    except Exception:
+                        pass
+                    return {"ok": False,
+                            "error": f"file exceeds {UPLOAD_MAX_BYTES // (1024*1024)} MB"}
+                out.write(chunk)
     except Exception as e:
-        return {"ok": False, "error": str(e)}
-    size = target.stat().st_size
-    if size > 500 * 1024 * 1024:
         try:
             target.unlink()
         except Exception:
             pass
-        return {"ok": False, "error": "file exceeds 500 MB"}
-    return {"ok": True, "path": str(target), "name": safe, "size": size}
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "path": str(target), "name": safe, "size": total}
 
 
 @app.post("/monitor/start")
 async def start_monitor(interval: int = 300):
+    interval = max(MONITOR_MIN_INTERVAL, min(int(interval), MONITOR_MAX_INTERVAL))
     monitor.interval = interval
 
     async def check():
         model = _current_model()
-        reply, _ = await run_agent("Summarize anything new from GitHub.",
-                                    model=model, session_id="monitor")
+        try:
+            reply, _ = await run_agent("Summarize anything new from GitHub.",
+                                        model=model, session_id="__monitor__")
+        except Exception as e:
+            reply = f"monitor error: {type(e).__name__}: {e}"
         return reply
 
     monitor.set_callback(check)
     monitor.start()
-    return {"ok": True}
+    return {"ok": True, "interval": interval}
 
 
 @app.post("/monitor/stop")
@@ -543,6 +662,15 @@ async def monitor_status():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    # Auth gate: allow same-origin, or cookie, or nothing if auth disabled
+    if auth.is_enabled():
+        origin = ws.headers.get("origin", "")
+        same_origin = origin in _cors_origins
+        tok = ws.cookies.get(auth.COOKIE_NAME)
+        if not (same_origin or auth.verify_token(tok)):
+            await ws.close(code=4401)
+            return
+
     await ws.accept()
     pending: Dict[str, asyncio.Event] = {}
     decisions: Dict[str, bool] = {}
@@ -572,7 +700,7 @@ async def websocket_endpoint(ws: WebSocket):
     async def process(msg: str, sid: str):
         await ws.send_json({"type": "thinking"})
 
-        blocked, reason = is_blocked(msg)
+        blocked, _ = is_blocked(msg)
         if blocked:
             await ws.send_json({
                 "type": "reply",
@@ -589,7 +717,7 @@ async def websocket_endpoint(ws: WebSocket):
             history = _session_get(sid)
             history.append({"role": "user", "content": f"[user provided {name}]"})
             history.append({"role": "assistant", "content": reply})
-            _session_put(sid, history[-20:])
+            _session_put(sid, history[-HISTORY_MAX:])
             await ws.send_json({
                 "type": "reply",
                 "reply": reply,
@@ -609,7 +737,7 @@ async def websocket_endpoint(ws: WebSocket):
             history = _session_get(sid)
             history.append({"role": "user", "content": "[connected codebase from attachment]"})
             history.append({"role": "assistant", "content": result})
-            _session_put(sid, history[-20:])
+            _session_put(sid, history[-HISTORY_MAX:])
             await ws.send_json({
                 "type": "reply",
                 "reply": result,
@@ -622,14 +750,25 @@ async def websocket_endpoint(ws: WebSocket):
 
         history = _session_get(sid)
         model = _current_model()
-        reply, calls = await run_agent(
-            msg, history=history, model=model,
-            confirm_callback=confirm_callback, session_id=sid,
-        )
+        try:
+            reply, calls = await run_agent(
+                msg, history=history, model=model,
+                confirm_callback=confirm_callback, session_id=sid,
+            )
+        except Exception as e:
+            reply = _model_error_reply(e, model)
+            calls = []
+            await ws.send_json({
+                "type": "reply",
+                "reply": reply,
+                "tool_calls": [],
+                "session_id": sid,
+            })
+            return
 
         history.append({"role": "user", "content": msg})
         history.append({"role": "assistant", "content": reply})
-        _session_put(sid, history[-20:])
+        _session_put(sid, history[-HISTORY_MAX:])
 
         await ws.send_json({
             "type": "reply",

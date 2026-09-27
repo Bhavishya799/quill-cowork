@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import time
 import uuid
 from typing import List, Dict, Any, Tuple, Callable, Awaitable, Optional
 
@@ -20,185 +21,238 @@ load_all_tools()
 from tools.registry import get_ollama_tools, call_tool, is_destructive
 
 
+# ---------------------------------------------------------------------
+# System prompt — kept tight so small models have room to reason.
+# Tool descriptions come from the JSON schema, not from prose here.
+# ---------------------------------------------------------------------
+
 SYSTEM_PROMPT = (
-    "You are Quill. When the user's message asks for an action "
-    "(reading files, checking notifications, searching, fetching, "
-    "sending email, looking something up, working on a codebase), call a tool. "
-    "For casual conversation or simple questions, reply directly without a tool. "
-    "If the user asks about a topic, product, person, or current event you "
-    "don't have knowledge of, use web_search or search_wikipedia before "
-    "answering — do not guess and do not list files. "
-    "Never claim to have done something unless you called the tool. "
-    "When the user asks for recent, latest, or newest emails, call "
-    "list_emails with an empty query. Do not invent Gmail filters. "
-    "Only add filters when the user asks for unread, starred, or from: someone. "
-    "For codebase work: list_codebases shows what is connected, "
-    "codebase_tree sees the layout, codebase_symbols or codebase_find_symbol "
-    "locate code, codebase_read reads individual files, "
-    "codebase_patch makes small edits. "
-    "Only call codebase_read_all when the codebase is small and you truly "
-    "need everything — it is expensive. "
+    "You are Quill, a local AI assistant with tool access. "
+    "When the user asks for an action, call the appropriate tool through "
+    "the structured tool-call channel. "
+    "Never write a tool call as text like 'web_search(\"...\")'. "
+    "If no tool is needed, reply in plain prose. "
+    "Never claim you did something unless a tool result confirms it. "
     "Workspace root: D:/Quill-Cowork/workspace. "
-    "When listing or reading workspace files, pass '.' or a relative path "
-    "(e.g. 'notes.txt', 'subfolder/file.txt') — do NOT pass '/workspace' or "
-    "absolute paths unless the user gave one. "
-    "If the user's message contains '[attached files: name at /path]', the file "
-    "is already on disk at that path. Use that path directly — do not ask the "
-    "user for a location again. For .zip/.tar/.tar.gz, call connect_codebase "
-    "with the path to extract and index it. "
-    "Be concise. Never use emoji or emoticons. No exclamation marks. "
-    "No cheerful filler or openers like 'Sure!' or 'Great!'. Plain prose only."
+    "For workspace files use '.' or a relative path, not '/workspace'. "
+    "Be concise. No emoji. No exclamation marks. No filler."
 )
 
 ConfirmCallback = Callable[[str, str, Dict[str, Any]], Awaitable[bool]]
 
 
-# =====================================================================
-# Session working set — a rolling note about what the model has read
-# =====================================================================
+# ---------------------------------------------------------------------
+# Session working set — compressed notes about what the model has done.
+# Has TTL to avoid unbounded growth.
+# ---------------------------------------------------------------------
 
 _WORKING_SET: Dict[str, list] = {}
+_WORKING_SET_TS: Dict[str, float] = {}
 _WORKING_SET_MAX = 30
+_WORKING_SET_TTL = 3600
+
+
+def _ws_gc():
+    now = time.time()
+    stale = [k for k, ts in _WORKING_SET_TS.items() if now - ts > _WORKING_SET_TTL]
+    for k in stale:
+        _WORKING_SET.pop(k, None)
+        _WORKING_SET_TS.pop(k, None)
 
 
 def _ws_add(session_id: str, line: str):
-    key = session_id or "default"
-    lines = _WORKING_SET.setdefault(key, [])
+    if not session_id:
+        return
+    _ws_gc()
+    lines = _WORKING_SET.setdefault(session_id, [])
     if line in lines:
         return
     lines.append(line)
     if len(lines) > _WORKING_SET_MAX:
-        _WORKING_SET[key] = lines[-_WORKING_SET_MAX:]
+        _WORKING_SET[session_id] = lines[-_WORKING_SET_MAX:]
+    _WORKING_SET_TS[session_id] = time.time()
 
 
 def _ws_render(session_id: str) -> str:
-    lines = _WORKING_SET.get(session_id or "default", [])
+    if not session_id:
+        return ""
+    lines = _WORKING_SET.get(session_id)
     if not lines:
         return ""
-    return ("Notes from this session (what you have already done — do not redo "
-            "these steps):\n" + "\n".join(f"- {l}" for l in lines))
+    return ("Session notes (already done — do not redo):\n"
+            + "\n".join(f"- {l}" for l in lines))
 
 
 def _ws_clear(session_id: str):
-    _WORKING_SET.pop(session_id or "default", None)
+    if not session_id:
+        return
+    _WORKING_SET.pop(session_id, None)
+    _WORKING_SET_TS.pop(session_id, None)
 
 
 def _note_tool_call(session_id: str, name: str, args: dict, result: str):
-    if session_id is None:
+    if not session_id:
         return
     if name == "codebase_read":
-        path = args.get("path", "?")
-        _ws_add(session_id, f"read {path}")
+        _ws_add(session_id, f"read {args.get('path','?')}")
     elif name == "codebase_read_all":
-        _ws_add(session_id, f"read the entire codebase '{args.get('name','?')}'")
+        _ws_add(session_id, f"read whole codebase '{args.get('name','?')}'")
     elif name == "codebase_write":
-        path = args.get("path", "?")
-        _ws_add(session_id, f"wrote {path}")
+        _ws_add(session_id, f"wrote {args.get('path','?')}")
     elif name == "codebase_patch":
-        path = args.get("path", "?")
-        _ws_add(session_id, f"patched {path}")
+        _ws_add(session_id, f"patched {args.get('path','?')}")
     elif name == "codebase_search":
         _ws_add(session_id, f"searched '{args.get('query','?')}'")
     elif name == "codebase_grep":
         _ws_add(session_id, f"grepped /{args.get('pattern','?')}/")
     elif name == "codebase_git":
-        action = args.get("action", "?")
-        _ws_add(session_id, f"git {action} on '{args.get('name','?')}'")
+        _ws_add(session_id, f"git {args.get('action','?')}")
+    elif name == "list_codebases":
+        _ws_add(session_id, "listed connected codebases")
+    elif name == "connect_codebase":
+        _ws_add(session_id, f"connected codebase '{args.get('name','?')}'")
 
 
-# =====================================================================
-# Tool filter
-# =====================================================================
+# ---------------------------------------------------------------------
+# Tool routing — intent-based, tight slices. Falls back to a small
+# read-only set for ambiguous prompts, and to [] for pure chat.
+# ---------------------------------------------------------------------
+
+_READ_ONLY_FALLBACK = {
+    "list_directory",
+    "web_search",
+    "search_wikipedia",
+}
+
 
 def filter_tools(message: str, all_tools: list) -> list:
-    m = message.lower()
+    m = (message or "").lower()
     keep = set()
 
     def has(*words):
         return any(re.search(rf"\b{re.escape(w)}", m) for w in words)
 
-    # Filesystem
-    if has("file", "folder", "directory", "workspace", "find"):
-        keep.update(["list_directory", "read_file", "search_files"])
-    if has("read", "open") and has("file", "notes", "txt", "md"):
-        keep.update(["read_file", "list_directory"])
-    if has("list") and has("file", "folder", "directory", "workspace"):
+    # ---- Filesystem ----
+    if has("list", "show") and has("file", "files", "folder", "directory", "workspace", "root"):
         keep.add("list_directory")
-    if has("write", "create", "save", "make", "add"):
+    if has("read", "open", "show", "cat") and has("file", "notes", "txt", "md", "readme"):
+        keep.update(["read_file", "list_directory"])
+    if has("write", "create", "save", "make") and has("file", "txt", "md"):
         keep.add("write_file")
-    if has("search") and has("file", "folder", "workspace"):
+    if has("search", "find") and has("file", "folder", "glob", ".txt", ".py", ".md"):
         keep.add("search_files")
 
-    # GitHub
-    if has("notification", "notifications", "notify"):
+    # ---- GitHub ----
+    if has("notification", "notifications", "notify", "unread"):
         keep.update(["list_notifications", "get_notification_details",
                      "mark_all_notifications_read"])
+    if has("github") and has("new", "recent", "latest", "update"):
+        keep.add("list_notifications")
     if has("repo", "repository", "repositories"):
         keep.add("list_repos")
     if has("issue", "issues"):
         keep.update(["list_issues", "create_issue", "comment_on_issue"])
-    if has("pr", "prs", "pull") and has("request", "requests", "merge"):
+    if has("pull") and has("request", "requests"):
         keep.add("list_pull_requests")
     if has("commit", "commits"):
         keep.add("list_commits")
 
-    # Web / lookup
-    if has("http", "url", "website", "webpage", "link"):
-        keep.update(["fetch_page", "web_search"])
-    if has("fetch", "download", "scrape"):
-        keep.add("fetch_page")
-    if has("search", "google", "look", "find", "research", "latest", "news",
-           "summarise", "summarize", "summary", "tell", "explain",
-           "what", "who", "when", "where", "why", "how"):
-        keep.update(["web_search", "search_wikipedia", "get_wikipedia_article"])
+    # ---- Wikipedia ----
     if has("wiki", "wikipedia"):
-        keep.update(["search_wikipedia", "get_wikipedia_article"])
+        if has("say about", "about", "article"):
+            keep.add("get_wikipedia_article")
+        elif has("search", "look up", "lookup", "find"):
+            keep.add("search_wikipedia")
+        else:
+            keep.update(["search_wikipedia", "get_wikipedia_article"])
+    # ---- Web ----
+    else:
+        if has("google"):
+            keep.add("web_search")
+        if has("search", "look up", "lookup", "research") and has("web", "internet", "online", "news"):
+            keep.add("web_search")
+        if has("latest", "news", "recent") and has("about", "regarding", "on"):
+            keep.add("web_search")
+        if has("fetch", "download", "scrape", "get") and has("url", "http", "link", "page"):
+            keep.add("fetch_page")
+        if re.search(r"\bhttps?://", m) and not has("email", "gmail", "wiki"):
+            keep.add("fetch_page")
 
-    # Email
+    # ---- Email ----
     if has("email", "emails", "mail", "gmail", "inbox"):
-        keep.update(["list_emails", "get_email", "send_email",
-                     "create_draft", "reply_to_email", "list_labels",
-                     "mark_as_read", "archive_email", "trash_email"])
+        if has("send", "compose", "write") and not has("draft"):
+            keep.update(["send_email", "list_emails"])
+        elif has("draft") and has("save", "create", "make"):
+            keep.add("create_draft")
+        elif has("reply"):
+            keep.update(["reply_to_email", "get_email"])
+        elif has("read", "open", "show") and has("from"):
+            keep.add("get_email")
+        elif has("read", "open", "show"):
+            keep.update(["get_email", "list_emails"])
+        else:
+            keep.update(["list_emails", "get_email", "send_email",
+                         "create_draft", "reply_to_email"])
 
-    # Codebase
-    if has("codebase", "codebases", "connect", "index"):
-        keep.update(["connect_codebase", "list_codebases", "disconnect_codebase",
-                     "codebase_info", "codebase_tree", "codebase_search",
-                     "codebase_grep", "codebase_read", "codebase_read_all",
-                     "codebase_write", "codebase_git",
-                     "codebase_symbols", "codebase_find_symbol",
-                     "codebase_imports", "codebase_patch"])
-    if has("symbol", "symbols", "function", "class", "method"):
-        keep.update(["codebase_symbols", "codebase_find_symbol",
-                     "codebase_read", "codebase_tree"])
+    # ---- Codebase ----
+    if has("codebases") or (has("codebase") and has("connected", "indexed", "available")):
+        keep.add("list_codebases")
+    if has("connect", "index", "load") and has("codebase", "repo", "project", "folder"):
+        keep.update(["connect_codebase", "list_codebases"])
+    if has("disconnect", "remove") and has("codebase"):
+        keep.add("disconnect_codebase")
+    if has("tree", "structure", "layout", "hierarchy", "file list"):
+        keep.add("codebase_tree")
+    if has("files", "file") and has("codebase", "repo", "project") \
+            and not has("symbol", "function", "class", "read", "search", "patch"):
+        keep.add("codebase_tree")
+    if has("read all", "read entire", "read whole", "entire codebase", "whole codebase"):
+        keep.add("codebase_read_all")
+    if has("read", "show", "open") and has("file", "path") and has("codebase", "repo", "project"):
+        keep.add("codebase_read")
+    if has("info", "metadata", "stats", "languages") and has("codebase"):
+        keep.add("codebase_info")
+    if has("function", "functions", "class", "classes", "method", "methods",
+           "symbol", "symbols", "interface", "type"):
+        if has("find", "where", "locate", "defined", "definition"):
+            keep.add("codebase_find_symbol")
+        else:
+            keep.update(["codebase_symbols", "codebase_find_symbol"])
+    if has("search", "grep") and has("codebase", "repo", "project") and not keep:
+        if has("regex", "pattern", "grep"):
+            keep.add("codebase_grep")
+        else:
+            keep.update(["codebase_search", "codebase_grep"])
+    if has("patch", "replace", "edit", "modify", "rewrite", "fix") and has("file", "code", "line"):
+        keep.update(["codebase_patch", "codebase_read"])
+    if has("write", "create") and has("file") and has("codebase"):
+        keep.add("codebase_write")
+    if has("commit", "push") and has("codebase", "repo", "project", "git"):
+        keep.add("codebase_git")
     if has("import", "imports", "dependency", "dependencies"):
-        keep.update(["codebase_imports", "codebase_tree"])
-    if has("patch", "edit", "modify", "change", "fix", "rewrite"):
-        keep.update(["codebase_patch", "codebase_read", "codebase_search",
-                     "codebase_write"])
-    if has("search") and has("code", "codebase", "project"):
-        keep.update(["codebase_search", "codebase_grep"])
-    if has("read") and has("code", "codebase", "project"):
-        keep.update(["codebase_read", "codebase_search", "codebase_symbols"])
-    if has("commit", "push") and has("git", "codebase", "repo", "project"):
-        keep.update(["codebase_git", "codebase_info"])
-    if has("review", "audit", "analyze", "analyse", "inspect", "suggest", "improve"):
-        keep.update(["codebase_symbols", "codebase_tree", "codebase_info",
-                     "codebase_search", "codebase_grep", "codebase_read",
-                     "codebase_read_all"])
+        keep.add("codebase_imports")
 
-    # Grants
-    if has("grant", "grants", "granted", "access", "permission"):
+    # ---- Folder grants ----
+    if has("grant", "grants", "granted", "permission"):
         keep.update(["list_grants", "request_folder_grant"])
 
-    if not keep:
-        return all_tools
-    return [t for t in all_tools if t["function"]["name"] in keep]
+    if keep:
+        return [t for t in all_tools if t["function"]["name"] in keep]
+
+    # Ambiguous prompt with no strong signal. Give the model a small
+    # read-only set so it can still answer factual questions, but not
+    # hallucinate destructive calls.
+    if has("what", "who", "when", "where", "which", "tell", "explain",
+           "summarize", "summarise", "define", "meaning"):
+        return [t for t in all_tools if t["function"]["name"] in _READ_ONLY_FALLBACK]
+
+    # Pure conversational. No tools.
+    return []
 
 
-# =====================================================================
+# ---------------------------------------------------------------------
 # Agent loop
-# =====================================================================
+# ---------------------------------------------------------------------
 
 async def run_agent(
     user_message: str,
@@ -222,7 +276,7 @@ async def run_agent(
     if ws:
         system_content = SYSTEM_PROMPT + "\n\n" + ws
 
-    messages = [
+    messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_content},
         *history,
         {"role": "user", "content": user_message},
@@ -241,23 +295,41 @@ async def run_agent(
 
         if not calls:
             reply = (msg.get("content") or "").strip()
-            has_leak, kinds = scan_output(reply)
-            if has_leak:
-                log_event("output_redacted", kinds=kinds)
-                reply = redact_output(reply) + "\n\n[Content redacted.]"
-            return reply, log
+            # Some abliterated models emit tool-call syntax as text. Detect
+            # that pattern and try a repair pass.
+            if _looks_like_text_tool_call(reply) and tools:
+                repaired = _parse_text_tool_call(reply)
+                if repaired:
+                    calls = [{
+                        "function": {"name": repaired[0], "arguments": repaired[1]}
+                    }]
+                else:
+                    # Genuine leak — no tool result, just return the text
+                    pass
+            if not calls:
+                has_leak, kinds = scan_output(reply)
+                if has_leak:
+                    log_event("output_redacted", kinds=kinds)
+                    reply = redact_output(reply) + "\n\n[Content redacted.]"
+                return reply, log
 
-        messages.append(msg)
+        messages.append({
+            "role": "assistant",
+            "content": msg.get("content", "") or "",
+            "tool_calls": calls,
+        })
 
         for call in calls:
-            fn = call["function"]
-            name = fn["name"]
+            fn = call.get("function") or {}
+            name = fn.get("name")
             args = fn.get("arguments") or {}
             if isinstance(args, str):
                 try:
                     args = json.loads(args)
                 except Exception:
                     args = {}
+            if not name:
+                continue
 
             allowed, rreason = check_rate(name)
             if not allowed:
@@ -286,9 +358,65 @@ async def run_agent(
             log_event("tool_call", tool=name, args=args, result=result[:200])
             log.append({"tool": name, "arguments": args, "result": result[:500]})
             _note_tool_call(session_id, name, args, result)
-            messages.append({"role": "tool", "tool_name": name, "content": result})
+            messages.append({
+                "role": "tool",
+                "tool_name": name,
+                "name": name,
+                "content": result,
+            })
 
     return "Tool-call limit reached.", log
+
+
+# ---------------------------------------------------------------------
+# Text tool-call repair — a fallback for abliterated models that write
+# tool calls as prose instead of via the structured channel.
+# ---------------------------------------------------------------------
+
+_TEXT_CALL_RE = re.compile(
+    r"^\s*(?:call\s+)?([a-z_][a-z0-9_]*)\s*\(\s*(.*?)\s*\)\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _looks_like_text_tool_call(text: str) -> bool:
+    if not text or len(text) > 400:
+        return False
+    return bool(_TEXT_CALL_RE.match(text.strip()))
+
+
+def _parse_text_tool_call(text: str):
+    m = _TEXT_CALL_RE.match(text.strip())
+    if not m:
+        return None
+    name, raw_args = m.group(1), m.group(2)
+    args: Dict[str, Any] = {}
+    if raw_args:
+        # Try JSON first
+        try:
+            parsed = json.loads("{" + raw_args + "}")
+            if isinstance(parsed, dict):
+                return name, parsed
+        except Exception:
+            pass
+        # Try a single positional string argument
+        stripped = raw_args.strip().strip('"').strip("'")
+        # Match the tool's first required parameter name
+        from tools.registry import _tools  # local import to avoid cycles
+        entry = _tools.get(name)
+        if entry:
+            try:
+                import inspect
+                sig = inspect.signature(entry["function"])
+                first = next(iter(sig.parameters))
+                if stripped:
+                    args[first] = stripped
+                    return name, args
+            except Exception:
+                pass
+    else:
+        return name, {}
+    return None
 
 
 def clear_working_set(session_id: str):

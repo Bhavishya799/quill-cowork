@@ -48,7 +48,8 @@ class Vault:
         if existing:
             return base64.b64decode(existing)
         new_key = secrets.token_bytes(32)
-        keyring.set_password(KEYRING_SERVICE, KEYRING_USER, base64.b64encode(new_key).decode())
+        keyring.set_password(KEYRING_SERVICE, KEYRING_USER,
+                             base64.b64encode(new_key).decode())
         return new_key
 
     def _load_vault(self) -> dict:
@@ -77,13 +78,6 @@ class Vault:
         return "__meta__" in self._data
 
     def _effective_key(self) -> bytes:
-        """
-        Return the key used for sensitive entries.
-
-        - If a passphrase is set AND the vault is unlocked -> session key (from passphrase).
-        - If no passphrase is set -> master key (from OS keyring).
-        - If a passphrase is set but locked -> raises VaultLockedError.
-        """
         if self._session_key is not None:
             return self._session_key
         if self._has_passphrase_internal():
@@ -105,6 +99,8 @@ class Vault:
 
     def set_passphrase(self, passphrase: str) -> None:
         self._check()
+        if self._has_passphrase_internal():
+            raise ValueError("passphrase already set; use change_passphrase(old, new)")
         if not passphrase or len(passphrase) < 8:
             raise ValueError("passphrase must be at least 8 characters")
         salt = secrets.token_bytes(16)
@@ -115,6 +111,44 @@ class Vault:
             "verify": base64.b64encode(key).decode(),
         }
         self._session_key = key
+        self._save_vault()
+
+    def change_passphrase(self, old: str, new: str) -> None:
+        self._check()
+        if not self._has_passphrase_internal():
+            raise ValueError("no passphrase set; use set_passphrase(new)")
+        if not self.unlock(old):
+            raise ValueError("wrong current passphrase")
+        if not new or len(new) < 8:
+            raise ValueError("new passphrase must be at least 8 characters")
+
+        # Decrypt every sensitive entry with old key
+        old_key = self._session_key
+        plaintexts: dict = {}
+        for k, v in self._data.items():
+            if isinstance(v, dict) and v.get("sensitive"):
+                raw = base64.b64decode(v["blob"])
+                nonce, ct = raw[:12], raw[12:]
+                plaintexts[k] = AESGCM(old_key).decrypt(nonce, ct, None).decode()
+
+        # Derive new key
+        salt = secrets.token_bytes(16)
+        new_key = scrypt(new.encode(), salt=salt, n=SCRYPT_N,
+                         r=SCRYPT_R, p=SCRYPT_P, dklen=SCRYPT_LEN)
+        self._data["__meta__"] = {
+            "salt": base64.b64encode(salt).decode(),
+            "verify": base64.b64encode(new_key).decode(),
+        }
+        self._session_key = new_key
+
+        # Re-encrypt all sensitive entries
+        for k, plaintext in plaintexts.items():
+            nonce = secrets.token_bytes(12)
+            blob = AESGCM(new_key).encrypt(nonce, plaintext.encode(), None)
+            self._data[k] = {
+                "sensitive": True,
+                "blob": base64.b64encode(nonce + blob).decode(),
+            }
         self._save_vault()
 
     def unlock(self, passphrase: str) -> bool:
@@ -164,7 +198,7 @@ class Vault:
     def get_safe(self, key: str) -> str:
         try:
             return self.get(key)
-        except (VaultLockedError, RuntimeError):
+        except Exception:
             return ""
 
     def delete(self, key: str) -> None:
@@ -201,7 +235,7 @@ vault = Vault()
 def _cli():
     import sys
     if len(sys.argv) < 2:
-        print("usage: vault.py [list|status|set-passphrase|unlock|lock|set|get|delete|has|info]")
+        print("usage: vault.py [list|status|set-passphrase|change-passphrase|unlock|lock|set|get|delete|has|info]")
         return
 
     cmd = sys.argv[1]
@@ -229,6 +263,14 @@ def _cli():
             return
         vault.set_passphrase(sys.argv[2])
         print("passphrase set; vault unlocked")
+        return
+
+    if cmd == "change-passphrase":
+        if len(sys.argv) < 4:
+            print("usage: vault.py change-passphrase <old> <new>")
+            return
+        vault.change_passphrase(sys.argv[2], sys.argv[3])
+        print("passphrase changed; vault unlocked")
         return
 
     if cmd == "unlock":

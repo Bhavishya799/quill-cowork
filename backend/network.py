@@ -1,11 +1,14 @@
 import ipaddress
 import os
+import socket
+from functools import lru_cache
 from urllib.parse import urlparse
 from typing import Tuple
 
 
 DEFAULT_ALLOWED = {
     "api.github.com", "github.com", "raw.githubusercontent.com",
+    "codeload.github.com", "objects.githubusercontent.com",
     "www.googleapis.com", "oauth2.googleapis.com", "accounts.google.com",
     "gmail.googleapis.com",
     "wikipedia.org", "en.wikipedia.org",
@@ -15,23 +18,55 @@ DEFAULT_ALLOWED = {
 
 BLOCKED_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "169.254.169.254"}
 
+_DNS_TTL = 300
+
 
 def allowlist() -> set:
     extra = os.getenv("ALLOWED_DOMAINS", "")
     return DEFAULT_ALLOWED | {d.strip().lower() for d in extra.split(",") if d.strip()}
 
 
+@lru_cache(maxsize=512)
+def _resolve(host: str, _ts: int) -> tuple:
+    # _ts forces cache invalidation every _DNS_TTL seconds
+    try:
+        infos = socket.getaddrinfo(host, None)
+        return tuple({i[4][0] for i in infos})
+    except Exception:
+        return ()
+
+
+def _resolved_ips(host: str) -> tuple:
+    import time
+    bucket = int(time.time() // _DNS_TTL)
+    return _resolve(host, bucket)
+
+
 def check_egress(url: str) -> Tuple[bool, str]:
     try:
-        host = (urlparse(url).hostname or "").lower()
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
     except Exception:
         return False, "invalid url"
     if not host:
         return False, "no host"
+    if parsed.scheme not in ("http", "https"):
+        return False, f"scheme not allowed: {parsed.scheme}"
+
     if host in BLOCKED_HOSTS:
         return False, f"blocked host: {host}"
+
+    # Direct IP literal
     if _is_private(host):
         return False, "private network"
+
+    # Resolve hostname and reject if any candidate resolves to a private range.
+    # This catches DNS rebinding where an allowlisted hostname points to 127/10/etc.
+    ips = _resolved_ips(host)
+    for ip in ips:
+        if _is_private(ip):
+            return False, f"host {host} resolves to private IP {ip}"
+
     allow = allowlist()
     if host in allow or any(host.endswith("." + a) for a in allow):
         return True, ""
@@ -60,5 +95,5 @@ def _is_private(host: str) -> bool:
         return False
     return (
         ip.is_private or ip.is_loopback or ip.is_link_local
-        or ip.is_reserved or ip.is_multicast
+        or ip.is_reserved or ip.is_multicast or ip.is_unspecified
     )

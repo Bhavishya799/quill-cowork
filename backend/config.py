@@ -17,9 +17,11 @@ class Settings:
 
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", MODEL_BALANCED)
 
-    HOST = os.getenv("HOST", "0.0.0.0")
+    HOST = os.getenv("HOST", "127.0.0.1")
     PORT = int(os.getenv("PORT", "8000"))
-    MAX_TOOL_ITERATIONS = int(os.getenv("MAX_TOOL_ITERATIONS", "8"))
+    MAX_TOOL_ITERATIONS = int(os.getenv("MAX_TOOL_ITERATIONS", "20"))
+
+    WORKSPACE_ROOT = os.getenv("WORKSPACE_ROOT", "D:/Quill-Cowork/workspace")
 
     @property
     def slots(self):

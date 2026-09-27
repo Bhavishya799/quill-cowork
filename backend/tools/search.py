@@ -5,7 +5,7 @@ import httpx
 from .registry import tool, connector
 from vault import vault
 from safety import scan_injection
-
+from network import check_egress
 
 API = "https://api.tavily.com/search"
 

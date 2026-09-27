@@ -1,7 +1,7 @@
 """Minimal Google OAuth 2.0 helper. No external SDK, just httpx + vault."""
 import os
-import time
 import secrets
+import time
 from typing import Optional, Tuple
 from urllib.parse import urlencode
 
@@ -22,7 +22,10 @@ VAULT_KEYS = {
     "access": "GOOGLE_ACCESS_TOKEN",
     "expires": "GOOGLE_TOKEN_EXPIRES",
     "state": "GOOGLE_OAUTH_STATE",
+    "state_ts": "GOOGLE_OAUTH_STATE_TS",
 }
+
+STATE_TTL = 600
 
 
 def _env(name: str) -> str:
@@ -49,12 +52,43 @@ def is_connected() -> bool:
     return bool(vault.get_safe(VAULT_KEYS["refresh"]))
 
 
-def google_auth_url() -> str:
-    state = secrets.token_urlsafe(24)
+def _store_state(state: str) -> None:
     try:
         vault.set(VAULT_KEYS["state"], state)
+        vault.set(VAULT_KEYS["state_ts"], str(time.time()))
+    except Exception:
+        # Locked vault: proceed without state. Callback will refuse.
+        pass
+
+
+def _consume_state(expected: str) -> bool:
+    try:
+        stored = vault.get_safe(VAULT_KEYS["state"])
+        ts_raw = vault.get_safe(VAULT_KEYS["state_ts"])
+    except Exception:
+        return False
+    if not stored:
+        return False
+    if not secrets.compare_digest(stored, expected):
+        return False
+    try:
+        ts = float(ts_raw or "0")
+    except ValueError:
+        ts = 0.0
+    if ts and time.time() - ts > STATE_TTL:
+        return False
+    # Consume
+    try:
+        vault.delete(VAULT_KEYS["state"])
+        vault.delete(VAULT_KEYS["state_ts"])
     except Exception:
         pass
+    return True
+
+
+def google_auth_url() -> str:
+    state = secrets.token_urlsafe(24)
+    _store_state(state)
     params = {
         "client_id": _client_id(),
         "redirect_uri": _redirect_uri(),
@@ -69,9 +103,12 @@ def google_auth_url() -> str:
 
 
 def exchange_code(code: str, state: Optional[str] = None) -> Tuple[bool, str]:
-    expected = vault.get_safe(VAULT_KEYS["state"])
-    if expected and state and state != expected:
-        return False, "state mismatch"
+    if not code:
+        return False, "missing code"
+    if not state:
+        return False, "missing oauth state"
+    if not _consume_state(state):
+        return False, "oauth state mismatch or expired — restart the flow"
     try:
         r = httpx.post(
             GOOGLE_TOKEN,
@@ -88,7 +125,9 @@ def exchange_code(code: str, state: Optional[str] = None) -> Tuple[bool, str]:
         return False, f"token exchange failed: {e}"
     if r.status_code != 200:
         return False, f"token exchange HTTP {r.status_code}: {r.text[:200]}"
-    _store(r.json())
+    ok, msg = _store(r.json())
+    if not ok:
+        return False, msg
     return True, "connected"
 
 
@@ -127,15 +166,19 @@ def _refresh(refresh_token: str) -> str:
     return vault.get_safe(VAULT_KEYS["access"])
 
 
-def _store(payload: dict, keep_refresh: Optional[str] = None) -> None:
+def _store(payload: dict, keep_refresh: Optional[str] = None) -> Tuple[bool, str]:
     access = payload.get("access_token", "")
     refresh = payload.get("refresh_token") or keep_refresh or ""
     expires_in = int(payload.get("expires_in", 3600))
-    if access:
-        vault.set(VAULT_KEYS["access"], access, sensitive=True)
-    if refresh:
-        vault.set(VAULT_KEYS["refresh"], refresh, sensitive=True)
-    vault.set(VAULT_KEYS["expires"], str(time.time() + expires_in))
+    try:
+        if access:
+            vault.set(VAULT_KEYS["access"], access, sensitive=True)
+        if refresh:
+            vault.set(VAULT_KEYS["refresh"], refresh, sensitive=True)
+        vault.set(VAULT_KEYS["expires"], str(time.time() + expires_in))
+    except Exception as e:
+        return False, f"vault locked or unwritable: {e}. Unlock and retry."
+    return True, "stored"
 
 
 def disconnect() -> None:
