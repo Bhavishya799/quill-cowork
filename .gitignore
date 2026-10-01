@@ -37,3 +37,5 @@ fix_filter.py
 codebase_full_dump.txt
 evaluation/bench_v3_results.json
 evaluation/safety_v2_results.json
+
+strip_slop.py
