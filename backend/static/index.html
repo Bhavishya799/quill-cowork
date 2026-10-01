@@ -477,6 +477,16 @@ function handleServerMessage(data){
     state.phase = 'thinking';
     renderStream();
   } else if (data.type === 'confirm_request'){
+    if (getMode() === 'auto'){
+      try { ws.send(JSON.stringify({ type: 'confirm_response', call_id: data.call_id, approved: true })); } catch(e){}
+      pushMsg(chatId, {
+        role: 'step', ok: true,
+        label: (DONE[data.tool] || 'Done') + ' · ' + data.tool + ' · auto-approved',
+        target: humanArgs(data.arguments)
+      });
+      renderStream();
+      return;
+    }
     state.phase = 'awaiting';
     pendingConfirms[data.call_id] = { chatId };
     pushMsg(chatId, {

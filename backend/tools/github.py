@@ -1,4 +1,4 @@
-import os
+﻿import os
 import httpx
 
 from .registry import tool, connector
@@ -30,15 +30,24 @@ def _token() -> str:
 
 
 def _headers() -> dict:
+    tok = _token()
+    if not tok:
+        return {}
     return {
-        "Authorization": f"Bearer {_token()}",
+        "Authorization": f"Bearer {tok}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
-
 def _request(method: str, path: str, **kwargs):
-    r = httpx.request(method, f"{API}{path}", headers=_headers(), timeout=20, **kwargs)
+    if not _token():
+        return 401, "GitHub token not configured. Set GITHUB_PERSONAL_ACCESS_TOKEN in the vault."
+    headers = _headers()
+    if not headers:
+        return 401, ("GitHub token not set. Add one with: "
+                     "python vault.py set GITHUB_PERSONAL_ACCESS_TOKEN "
+                     "ghp_xxx --sensitive")
+    r = httpx.request(method, f"{API}{path}", headers=headers, timeout=20, **kwargs)
     if r.status_code == 205:
         return 205, None
     if r.status_code not in (200, 201):
@@ -83,7 +92,8 @@ def mark_all_notifications_read() -> str:
 
 
 @tool
-def list_repos(limit: int = 20) -> str:
+def list_repos(limit: int = 20, sort_by: str = "", direction: str = "",
+               since: str = "") -> str:
     """List your GitHub repositories, most recently updated first."""
     status, data = _request("GET", "/user/repos",
                             params={"sort": "updated", "per_page": limit})

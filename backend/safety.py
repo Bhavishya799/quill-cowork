@@ -73,10 +73,36 @@ _HIGH_ENTROPY = re.compile(r"\b[A-Za-z0-9_\-]{40,}\b")
 REFUSAL_MESSAGE = "That's outside what I can help with."
 
 
+_EXTRA_BLOCKED = re.compile(
+    r"\b(?:"
+    r"hack(?:er|ers|ing|ed|s)?|"
+    r"phish(?:er|ers|ing|ed|es)?|"
+    r"exfiltrat(?:e|es|ed|ing|ion|ions)?|"
+    r"bypass(?:es|ed|ing)?\s+(?:antivirus|av|firewall|security|auth\w*)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+_EXTRA_BLOCKED = re.compile(
+    r"\b(?:"
+    r"hack(?:er|ers|ing|ed|s)?|"
+    r"phish(?:er|ers|ing|ed|es)?|"
+    r"exfiltrat(?:e|es|ed|ing|ion|ions)?|"
+    r"bypass(?:es|ed|ing)?\s+(?:antivirus|av|firewall|security|auth\w*)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
 def is_blocked(text: str) -> Tuple[bool, str]:
     if not text or not text.strip():
         return False, ""
     if _BLOCKED.search(text):
+        return True, "blocked_content"
+    if _EXTRA_BLOCKED.search(text):
+        return True, "blocked_content"
+    if _EXTRA_BLOCKED.search(text):
         return True, "blocked_content"
     if _TECHNICAL_ATTACK.search(text) and _ATTACK_VERB.search(text):
         return True, "blocked_content"

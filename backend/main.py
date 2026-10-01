@@ -494,7 +494,12 @@ async def oauth_google_start():
 @app.get("/oauth/google/callback")
 async def oauth_google_callback(code: str = "", state: str = "", error: str = ""):
     if error:
-        return HTMLResponse(f"<h2>Google returned an error</h2><p>{error}</p>", status_code=400)
+        import html as _html
+        safe_err = _html.escape(str(error))
+        return HTMLResponse(
+            f"<h2>Google returned an error</h2><p>{safe_err}</p>",
+            status_code=400,
+        )
     if not code:
         return HTMLResponse("<h2>Missing authorization code</h2>", status_code=400)
     try:
@@ -538,6 +543,9 @@ async def grants_list():
 
 @app.post("/grants/grant")
 async def grants_grant(req: GrantRequest):
+    refused = grants_mod.is_hard_refused(req.path)
+    if refused:
+        return {"ok": False, "error": f"refused: {refused}"}
     try:
         entry = grants_mod.add_grant(req.path, label=req.label,
                                       read=req.read, write=req.write)
@@ -662,7 +670,7 @@ async def monitor_status():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
-    # Auth gate: allow same-origin, or cookie, or nothing if auth disabled
+    # Auth gate.
     if auth.is_enabled():
         origin = ws.headers.get("origin", "")
         same_origin = origin in _cors_origins
@@ -670,6 +678,19 @@ async def websocket_endpoint(ws: WebSocket):
         if not (same_origin or auth.verify_token(tok)):
             await ws.close(code=4401)
             return
+    else:
+        # A1 fix: when auth is disabled, refuse cross-origin WS
+        # connections. Browsers do not enforce CORS for WebSocket, so
+        # this is the only defence against a malicious page opening a
+        # socket to a locally-running Quill.
+        # Set QUILL_ALLOW_LAN_NO_AUTH=1 to deliberately allow LAN
+        # clients (not recommended).
+        import os as _os
+        if _os.getenv("QUILL_ALLOW_LAN_NO_AUTH", "") != "1":
+            host = (ws.headers.get("host") or "").split(":")[0].lower()
+            if host and host not in ("localhost", "127.0.0.1", "::1", "[::1]"):
+                await ws.close(code=4403)
+                return
 
     await ws.accept()
     pending: Dict[str, asyncio.Event] = {}
@@ -796,7 +817,9 @@ async def websocket_endpoint(ws: WebSocket):
                 await ws.send_json({"type": "error", "message": "busy"})
                 continue
 
-            sid = payload.get("session_id", "default")
+            sid = payload.get("session_id") or "default"
+            if not isinstance(sid, str) or len(sid) > 128:
+                sid = "default"
             msg = payload.get("message", "")
             running = asyncio.create_task(process(msg, sid))
     except WebSocketDisconnect:

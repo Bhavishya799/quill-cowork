@@ -247,7 +247,9 @@ def connect_codebase(source: str, name: str = "") -> str:
             except FileNotFoundError:
                 return "connect failed: git not found on PATH"
             if r.returncode != 0:
-                return f"clone failed: {(r.stderr or r.stdout).strip()[:300]}"
+                from safety import redact_log
+                err = redact_log((r.stderr or r.stdout).strip())[:300]
+                return f"clone failed: {err}"
             # Clear any embedded token from the clone's remote URL so it
             # doesn't sit in .git/config at rest.
             try:
@@ -301,6 +303,17 @@ def connect_codebase(source: str, name: str = "") -> str:
 
     if root_path is None:
         return "connect failed: could not resolve codebase root"
+
+    # A2 fix: refuse to index hard-protected paths (.ssh, .aws, keychains,
+    # browser profile dirs). These are never grantable via the AI.
+    try:
+        import grants as _grants
+        refused = _grants.is_hard_refused(str(root_path))
+        if refused:
+            return (f"connect refused: {root_path} contains '{refused}' "
+                    f"— this path is never indexable via the AI.")
+    except Exception:
+        pass
 
     try:
         meta = cb.ingest(root_path, name=name)

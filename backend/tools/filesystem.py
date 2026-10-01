@@ -32,6 +32,10 @@ _ROOT_ALIASES = {".", "/", "", "workspace", "/workspace", "\\workspace",
 
 def _resolve(rel: str, write: bool = False) -> Path:
     raw = str(rel or "").strip()
+    for prefix in ("/workspace/", "\\workspace\\"):
+        if raw.lower().startswith(prefix.lower()):
+            raw = raw[len(prefix):]
+            break
     if raw in _ROOT_ALIASES or raw.lower() in _ROOT_ALIASES:
         return WORKSPACE
 

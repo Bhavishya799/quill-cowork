@@ -54,7 +54,7 @@ def main():
         print(f"Server not reachable: {e}")
         return
         
-            httpx.post(f"{API}/models/slots/select", json={"slot": "balanced"}).raise_for_status()
+    httpx.post(f"{API}/models/slots/select", json={"slot": "balanced"}).raise_for_status()
     print("  Model locked to slot: balanced")
     print()
 
@@ -64,7 +64,7 @@ def main():
         tools_seen = set()
         errors = 0
         for i in range(RUNS):
-              elapsed, tools, err = _time_one(prompt, f"lat-{int(time.time())}-{label}-{i}")
+            elapsed, tools, err = _time_one(prompt, f"lat-{int(time.time())}-{label}-{i}")
             if err:
                 errors += 1
                 continue

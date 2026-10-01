@@ -27,3 +27,13 @@ codebase_dump.txt
 mycodebase.txt
 check_filter.py
 show_fails.py
+
+# One-shot fix scripts (local only)
+fix_quill.py
+fix_github.py
+fix_filter.py
+
+# Dumps and eval output
+codebase_full_dump.txt
+evaluation/bench_v3_results.json
+evaluation/safety_v2_results.json

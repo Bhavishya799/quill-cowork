@@ -55,6 +55,11 @@ def fetch_page(url: str, max_chars: int = 4000) -> str:
     if r is None or r.status_code != 200:
         return f"HTTP {r.status_code if r else 'no response'}"
 
+    ctype = (r.headers.get("content-type") or "").lower()
+    if ctype and not (ctype.startswith("text/")
+                      or "json" in ctype or "xml" in ctype or "html" in ctype):
+        return f"refused: content-type is {ctype}, not text"
+
     html = r.text
     html = re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
     html = re.sub(r"<style[^>]*>.*?</style>", " ", html, flags=re.DOTALL | re.IGNORECASE)

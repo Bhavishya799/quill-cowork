@@ -394,6 +394,30 @@ def read_file(name: str, path: str, max_chars: int = 8000) -> str:
     return f"file not found in index: {path}"
 
 
+
+def read_all(name: str, max_chars: int = 200_000) -> str:
+    """Read every indexed file in a connected codebase, concatenated."""
+    files = index_dir(name) / "files.jsonl"
+    if not files.exists():
+        return f"no index for '{name}'"
+    out = []
+    total = 0
+    with files.open("r", encoding="utf-8") as f:
+        for line in f:
+            try:
+                rec = json.loads(line)
+            except Exception:
+                continue
+            header = f"\n===== {rec['path']} =====\n"
+            content = rec.get("content", "")
+            if total + len(header) + len(content) > max_chars:
+                out.append(header + "[truncated]")
+                break
+            out.append(header + content)
+            total += len(header) + len(content)
+    return "".join(out) if out else f"no files in '{name}'"
+
+
 def write_file(name: str, path: str, content: str) -> str:
     meta = get_meta(name)
     if not meta:
@@ -486,14 +510,11 @@ def git_push(name: str, remote: str = "origin", branch: str = "") -> str:
     askpass_path = None
 
     if token:
-        # Write a short-lived askpass helper that returns the token.
-        # Removed in the finally block so it never persists.
-        askpass_dir = root / ".git" / "quill"
-        askpass_dir.mkdir(parents=True, exist_ok=True)
-        askpass_path = askpass_dir / "askpass.cmd"
-        askpass_path.write_text(
-            f"@echo off\r\necho {token}\r\n", encoding="utf-8"
-        )
+        import tempfile as _tmp
+        _fd, _p = _tmp.mkstemp(prefix="quill-askpass-", suffix=".cmd")
+        with os.fdopen(_fd, "w", encoding="utf-8") as _f:
+            _f.write("@echo off\r\n" + f"echo {token}\r\n")
+        askpass_path = Path(_p)
         env["GIT_ASKPASS"] = str(askpass_path)
         env["GIT_TERMINAL_PROMPT"] = "0"
 
@@ -508,7 +529,6 @@ def git_push(name: str, remote: str = "origin", branch: str = "") -> str:
         if askpass_path and askpass_path.exists():
             try:
                 askpass_path.unlink()
-                askpass_path.parent.rmdir()
             except Exception:
                 pass
 

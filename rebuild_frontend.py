@@ -403,7 +403,7 @@ def main():
     if n == 0:
         sys.exit('error: could not find <script type="text/x-dc"> inside template')
 
-      new_json = json.dumps(new_template).replace('</', '<\\u002F')
+    new_json = json.dumps(new_template).replace('</', '<\\u002F')
     html = html[:m.start(1)] + new_json + html[m.end(1):]
 
     out_path.parent.mkdir(parents=True, exist_ok=True)

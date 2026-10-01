@@ -33,10 +33,37 @@ def _stored_hash() -> str:
     return vault.get_safe(PASSWORD_KEY) or ""
 
 
+def hash_password(password: str) -> str:
+    """Generate a salted scrypt hash. Store this in the vault with:
+        python vault.py set QUILL_WEB_PASSWORD "<returned-value>" --sensitive
+    """
+    import base64
+    salt = secrets.token_bytes(16)
+    derived = hashlib.scrypt(password.encode("utf-8"), salt=salt,
+                             n=2**14, r=8, p=1, dklen=32)
+    return ("scrypt$"
+            + base64.b64encode(salt).decode()
+            + "$"
+            + base64.b64encode(derived).decode())
+
+
 def verify_password(password: str) -> bool:
     stored = _stored_hash()
     if not stored or not password:
         return False
+    # New format: scrypt$base64(salt)$base64(hash)
+    if stored.startswith("scrypt$"):
+        try:
+            import base64
+            _, salt_b64, hash_b64 = stored.split("$", 2)
+            salt = base64.b64decode(salt_b64)
+            expected = base64.b64decode(hash_b64)
+            actual = hashlib.scrypt(password.encode("utf-8"), salt=salt,
+                                    n=2**14, r=8, p=1, dklen=32)
+            return hmac.compare_digest(actual, expected)
+        except Exception:
+            return False
+    # Legacy format: unsalted SHA-256 (kept for backward compatibility)
     h = hashlib.sha256(password.encode("utf-8")).hexdigest()
     return hmac.compare_digest(h, stored)
 

@@ -63,6 +63,8 @@ def check_egress(url: str) -> Tuple[bool, str]:
     # Resolve hostname and reject if any candidate resolves to a private range.
     # This catches DNS rebinding where an allowlisted hostname points to 127/10/etc.
     ips = _resolved_ips(host)
+    if not ips:
+        return False, f"could not resolve host: {host}"
     for ip in ips:
         if _is_private(ip):
             return False, f"host {host} resolves to private IP {ip}"
