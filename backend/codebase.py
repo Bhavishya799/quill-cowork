@@ -540,7 +540,7 @@ def git_push(name: str, remote: str = "origin", branch: str = "") -> str:
 # Phase One: symbols, imports, patch
 # =====================================================================
 
-_PY_FN = None  # populated lazily to avoid importing ast at module load
+_PY_FN = None
 
 
 def _extract_symbols_python(content: str):

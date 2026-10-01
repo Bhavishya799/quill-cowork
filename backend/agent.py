@@ -236,10 +236,6 @@ def filter_tools(message: str, all_tools: list) -> list:
 
     if keep:
         return [t for t in all_tools if t["function"]["name"] in keep]
-
-    # Ambiguous prompt with no strong signal. Give the model a small
-    # read-only set so it can still answer factual questions, but not
-    # hallucinate destructive calls.
     # No classified intent. Return nothing so the model cannot hallucinate
     # a tool call on a conversational prompt.
     return []

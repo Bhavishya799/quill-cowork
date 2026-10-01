@@ -58,7 +58,7 @@ _SECRETS = [
 
 
 def _has_high_entropy(s: str) -> bool:
-    """Stricter than the old \b[A-Za-z0-9_-]{40,}\b which matched SHA-1 hashes."""
+    """Return True only for strings that look secret-like (mixed case + digits)."""
     if len(s) < 40:
         return False
     has_upper = any(c.isupper() for c in s)
