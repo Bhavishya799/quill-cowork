@@ -100,6 +100,7 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 .msg-user-bubble.saved{background:#E6F1EA;color:#2C6B47;font-style:italic}
 
 .msg-asst{display:flex;flex-direction:column;gap:10px;animation:qc-in .25s ease-out}
+.msg-asst-label{font:500 11px Geist,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-5);margin-bottom:2px}
 .msg-asst-blocks{display:flex;flex-direction:column;gap:10px}
 .blk-p{margin:0;font:400 17px/1.65 Newsreader,serif;color:var(--ink);white-space:pre-wrap}
 .blk-li{display:flex;gap:10px;font:400 17px/1.65 Newsreader,serif;color:var(--ink)}
@@ -857,6 +858,7 @@ function renderStream(){
             '</div>'
           : '';
         return '<div class="msg-asst" data-msg-id="' + m.id + '">' +
+          '<div class="msg-asst-label">Quill</div>' +
           '<div class="msg-asst-blocks">' + blocksHtml(m.text) + '</div>' +
           actions +
         '</div>';
