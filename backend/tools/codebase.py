@@ -263,7 +263,7 @@ def connect_codebase(source: str, name: str = "") -> str:
 
     # ---- Local archive or folder ----
     else:
-        p = Path(src).expanduser().resolve()
+        p = Path(src.lstrip("/\\")).expanduser().resolve()
         if not p.exists():
             return f"connect failed: path does not exist ({p})"
 

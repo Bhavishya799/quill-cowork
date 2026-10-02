@@ -103,6 +103,15 @@ class Vault:
             raise ValueError("passphrase already set; use change_passphrase(old, new)")
         if not passphrase or len(passphrase) < 8:
             raise ValueError("passphrase must be at least 8 characters")
+
+        old_key = self._effective_key()
+        plaintexts: dict = {}
+        for k, v in self._data.items():
+            if isinstance(v, dict) and v.get("sensitive"):
+                raw = base64.b64decode(v["blob"])
+                nonce, ct = raw[:12], raw[12:]
+                plaintexts[k] = AESGCM(old_key).decrypt(nonce, ct, None).decode()
+
         salt = secrets.token_bytes(16)
         key = scrypt(passphrase.encode(), salt=salt, n=SCRYPT_N,
                      r=SCRYPT_R, p=SCRYPT_P, dklen=SCRYPT_LEN)
@@ -111,6 +120,14 @@ class Vault:
             "verify": base64.b64encode(key).decode(),
         }
         self._session_key = key
+
+        for k, plaintext in plaintexts.items():
+            nonce = secrets.token_bytes(12)
+            blob = AESGCM(key).encrypt(nonce, plaintext.encode(), None)
+            self._data[k] = {
+                "sensitive": True,
+                "blob": base64.b64encode(nonce + blob).decode(),
+            }
         self._save_vault()
 
     def change_passphrase(self, old: str, new: str) -> None:

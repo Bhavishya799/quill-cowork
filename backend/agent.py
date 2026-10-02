@@ -131,7 +131,8 @@ def filter_tools(message: str, all_tools: list) -> list:
         return any(re.search(rf"\b{re.escape(w)}", m) for w in words)
 
     # ---- Filesystem ----
-    if has("list", "show") and has("file", "files", "folder", "directory", "workspace", "root"):
+    if (has("list", "show") and has("file", "files", "folder", "directory", "workspace", "root")) \
+            or (has("file", "files") and has("workspace", "root", "folder", "directory")):
         keep.add("list_directory")
     if has("read", "open", "show", "cat") and has("file", "notes", "txt", "md", "readme"):
         keep.update(["read_file", "list_directory"])
@@ -141,7 +142,7 @@ def filter_tools(message: str, all_tools: list) -> list:
         keep.add("search_files")
 
     # ---- GitHub ----
-    if has("notification", "notifications", "notify", "unread"):
+    if has("notification", "notifications", "notify") or (has("unread") and has("github")):
         keep.update(["list_notifications", "get_notification_details",
                      "mark_all_notifications_read"])
     if has("github") and has("new", "recent", "latest", "update"):
@@ -155,21 +156,25 @@ def filter_tools(message: str, all_tools: list) -> list:
     if has("commit", "commits"):
         keep.add("list_commits")
 
+    # ---- Web / fetch (before Wikipedia so URLs containing 'wikipedia' still fetch) ----
+    if re.search(r"\bhttps?://", m) and not has("email", "gmail"):
+        keep.add("fetch_page")
+
     # ---- Wikipedia ----
     if has("wiki", "wikipedia"):
-        if has("say about", "about", "article"):
-            keep.add("get_wikipedia_article")
-        elif has("search", "look up", "lookup", "find"):
+        if has("search", "look up", "lookup", "find"):
             keep.add("search_wikipedia")
+        elif has("say about", "about", "article"):
+            keep.add("get_wikipedia_article")
         else:
             keep.update(["search_wikipedia", "get_wikipedia_article"])
     # ---- Web ----
     else:
         if has("google"):
             keep.add("web_search")
-        if has("search", "look up", "lookup", "research") and has("web", "internet", "online", "news"):
+        if has("search", "look up", "lookup", "research", "find") and not has("codebase", "repo", "project", "file", "files", "wiki", "wikipedia"):
             keep.add("web_search")
-        if has("latest", "news", "recent") and has("about", "regarding", "on"):
+        if has("latest", "news", "recent", "happening", "current"):
             keep.add("web_search")
         if has("fetch", "download", "scrape", "get") and has("url", "http", "link", "page"):
             keep.add("fetch_page")
@@ -184,13 +189,22 @@ def filter_tools(message: str, all_tools: list) -> list:
             keep.add("create_draft")
         elif has("reply"):
             keep.update(["reply_to_email", "get_email"])
+        elif has("label", "labels"):
+            keep.add("list_labels")
+        elif has("mark") and has("read"):
+            keep.add("mark_as_read")
+        elif has("archive"):
+            keep.add("archive_email")
+        elif has("trash", "delete"):
+            keep.add("trash_email")
         elif has("read", "open", "show") and has("from"):
             keep.add("get_email")
         elif has("read", "open", "show"):
             keep.update(["get_email", "list_emails"])
         else:
             keep.update(["list_emails", "get_email", "send_email",
-                         "create_draft", "reply_to_email"])
+                         "create_draft", "reply_to_email", "list_labels",
+                         "mark_as_read", "archive_email", "trash_email"])
 
     # ---- Codebase ----
     if has("codebases") or (has("codebase") and has("connected", "indexed", "available")):
@@ -290,7 +304,7 @@ async def run_agent(
             # that pattern and try a repair pass.
             if _looks_like_text_tool_call(reply) and tools:
                 repaired = _parse_text_tool_call(reply)
-                if repaired:
+                if repaired and repaired[0] in {t["function"]["name"] for t in tools}:
                     calls = [{
                         "function": {"name": repaired[0], "arguments": repaired[1]}
                     }]
