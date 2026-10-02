@@ -244,6 +244,11 @@ def filter_tools(message: str, all_tools: list) -> list:
     if has("import", "imports", "dependency", "dependencies"):
         keep.add("codebase_imports")
 
+    # ---- Time ----
+    if has("time", "clock", "date", "today", "tonight", "tomorrow", "yesterday",
+           "now", "weekday", "week", "month", "year"):
+        keep.add("get_current_time")
+
     # ---- Folder grants ----
     if has("grant", "grants", "granted", "permission"):
         keep.update(["list_grants", "request_folder_grant"])

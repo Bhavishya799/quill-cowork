@@ -130,3 +130,18 @@ def search_files(pattern: str, path: str = ".") -> str:
         return "\n".join(str(m.relative_to(base)) for m in matches[:50])
     except Exception:
         return "\n".join(str(m) for m in matches[:50])
+
+@tool
+def get_current_time(timezone: str = "local") -> str:
+    """Return the current date, time, and day of week.
+    timezone: 'local' or a name like 'UTC', 'Asia/Kolkata', 'America/New_York'."""
+    from datetime import datetime, timezone as _tz
+    try:
+        if timezone.lower() == "local":
+            now = datetime.now().astimezone()
+        else:
+            from zoneinfo import ZoneInfo
+            now = datetime.now(ZoneInfo(timezone))
+    except Exception as e:
+        return f"bad timezone '{timezone}': {e}"
+    return now.strftime("%A, %d %B %Y, %H:%M %Z (%z)")
