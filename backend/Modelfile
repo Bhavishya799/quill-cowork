@@ -1,4 +1,4 @@
-﻿FROM richardyoung/qwen3-4b-instruct-2507-abliterated
+FROM richardyoung/agents-a1-4b-heretic
 
 PARAMETER temperature 0.3
 PARAMETER top_p 0.9

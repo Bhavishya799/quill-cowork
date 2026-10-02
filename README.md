@@ -1,13 +1,13 @@
-Ôªø# Quill-Cowork
+# Quill-Cowork
 
 A local-first agentic AI assistant. Runs entirely on consumer hardware.
 No cloud. No accounts. Your files stay on your machine.
 
 Uses Ollama for inference, FastAPI for the backend, and a single-file HTML
-frontend. Wraps an abliterated 4B model in a layered safety architecture ‚Äî
+frontend. Wraps an abliterated 4B model in a layered safety architecture ó
 eleven layers enforced in code.
 
-## ‚ö†Ô∏è Safety notice
+## ?? Safety notice
 
 Quill-Cowork runs an abliterated (uncensored) language model with
 filesystem, email, and GitHub access. It is designed for single-user,
@@ -53,12 +53,14 @@ and re-measurement is pending.
     cp .env.example .env
 
     # Pull the models your slots reference:
-    ollama pull qwen2.5:3b        # MODEL_FAST
-    ollama pull qwen2.5:7b        # MODEL_POWERFUL
+    ollama pull huihui_ai/qwen2.5-abliterate:3b        # MODEL_FAST
+    ollama pull richardyoung/granite-4.2-8b-heretic    # MODEL_POWERFUL
 
-    # Build the default (balanced) model from the Modelfile.
-    # This pulls its own base model on first run.
-    ollama create quill -f Modelfile
+    # Build the slot aliases from the Modelfiles.
+    # Each pulls its own base model on first run.
+    ollama create quill           -f Modelfile
+    ollama create quill-cpu-fast  -f Modelfile.cpu-fast
+    ollama create quill-cpu-smart -f Modelfile.cpu-smart
 
     python main.py
 
@@ -68,11 +70,24 @@ Open http://localhost:8000
 
 Variables in backend/.env:
 
-- MODEL_* ‚Äî model slots
-- WORKSPACE_ROOT ‚Äî filesystem sandbox root
-- DISABLED_CONNECTORS ‚Äî comma-separated connector ids to hide
-- ALLOWED_DOMAINS ‚Äî extra hosts for fetch_page
-- MAX_TOOL_ITERATIONS ‚Äî cap on tool-call rounds per turn (default 20)
+- MODEL_* ó model slots
+- WORKSPACE_ROOT ó filesystem sandbox root
+- DISABLED_CONNECTORS ó comma-separated connector ids to hide
+- ALLOWED_DOMAINS ó extra hosts for fetch_page
+- MAX_TOOL_ITERATIONS ó cap on tool-call rounds per turn (default 20)
+
+Model slots in `backend/.env`. Each slot must point at an Ollama tag
+whose manifest declares `tools` in its Capabilities. Verify with
+`ollama show <tag>` before trusting a slot.
+
+- MODEL_FAST ó `huihui_ai/qwen2.5-abliterate:3b`
+- MODEL_BALANCED ó `quill` (built from `Modelfile`, agents-a1-4b base)
+- MODEL_POWERFUL ó `richardyoung/granite-4.2-8b-heretic` (capped at 8K ctx)
+- MODEL_CPU_FAST ó `quill-cpu-fast` (0.6B)
+- MODEL_CPU_SMART ó `quill-cpu-smart` (4B)
+
+Swap any slot by editing the tag, then run
+`ollama create <alias> -f <Modelfile>` for the `quill*` aliases.
 
 Credentials go in the vault:
 
@@ -108,4 +123,5 @@ figures, and the safety filter's precision/recall.
 
 ## License
 
-MIT ‚Äî see LICENSE.
+MIT ó see LICENSE.# test
+# watcher test

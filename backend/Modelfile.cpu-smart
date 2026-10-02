@@ -1,4 +1,4 @@
-FROM huihui_ai/qwen2.5-abliterate:1.5b
+FROM huihui_ai/qwen3-abliterated:4b
 
 PARAMETER temperature 0.3
 PARAMETER top_p 0.9

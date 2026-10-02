@@ -22,6 +22,8 @@ class OllamaProvider(BaseProvider):
                     model=model or self.default_model,
                     messages=messages,
                     tools=tools or None,
+                    think=False,
+                    options={"num_ctx": 8192},
                 )
                 msg = response["message"]
                 return {
