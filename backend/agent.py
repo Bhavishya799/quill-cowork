@@ -249,6 +249,29 @@ def filter_tools(message: str, all_tools: list) -> list:
            "now", "weekday", "week", "month", "year"):
         keep.add("get_current_time")
 
+    # ---- Obsidian ----
+    obsidian_signal = (
+        has("obsidian")
+        or has("wikilink", "wikilinks", "backlink", "backlinks")
+        or (has("daily", "today") and has("note", "notes"))
+        or (has("note", "notes") and has("vault"))
+    )
+    if obsidian_signal:
+        keep.update(["obsidian_list_notes", "obsidian_read_note",
+                     "obsidian_search", "obsidian_list_tags"])
+        if has("create", "new", "add", "make") or has("append"):
+            keep.update(["obsidian_write_note", "obsidian_append_note"])
+        if has("append", "add to"):
+            keep.add("obsidian_append_note")
+        if has("search", "find", "grep"):
+            keep.add("obsidian_search")
+        if has("tag", "tags"):
+            keep.add("obsidian_list_tags")
+        if has("backlink", "backlinks", "links to", "linked from"):
+            keep.add("obsidian_backlinks")
+        if has("daily", "today", "yesterday"):
+            keep.add("obsidian_daily_note")
+
     # ---- Folder grants ----
     if has("grant", "grants", "granted", "permission"):
         keep.update(["list_grants", "request_folder_grant"])
