@@ -131,63 +131,86 @@ def filter_tools(message: str, all_tools: list) -> list:
         return any(re.search(rf"\b{re.escape(w)}", m) for w in words)
 
     # ---- Filesystem ----
-    if (has("list", "show") and has("file", "files", "folder", "directory", "workspace", "root")) \
-            or (has("file", "files") and has("workspace", "root", "folder", "directory")):
+    if has("list", "show", "what", "what's", "display") and has("file", "files", "folder", "directory", "workspace", "root", "contents"):
         keep.add("list_directory")
-    if has("read", "open", "show", "cat") and has("file", "notes", "txt", "md", "readme"):
+    if has("read", "open", "cat", "view", "display", "show") and has("file", "notes", "txt", "md", "readme", "contents"):
         keep.update(["read_file", "list_directory"])
-    if has("write", "create", "save", "make") and has("file", "txt", "md"):
+    if has("write", "create", "save", "make", "put", "store") and has("file", "txt", "md", "note"):
         keep.add("write_file")
-    if has("search", "find") and has("file", "folder", "glob", ".txt", ".py", ".md"):
+    if has("search", "find", "locate", "look", "glob", "where") and has("file", "files", "folder", "glob", ".txt", ".py", ".md"):
         keep.add("search_files")
+    if has("time", "date", "day", "today", "clock", "now", "weekday"):
+        keep.add("get_current_time")
+
+    # ---- Obsidian ----
+    obsidian_signal = (
+        has("obsidian")
+        or has("wikilink", "wikilinks", "backlink", "backlinks")
+        or (has("daily", "today", "yesterday") and has("note", "notes"))
+        or (has("note", "notes") and has("vault"))
+        or (has("note", "notes") and has("my", "list", "show", "read", "open", "find", "search"))
+    )
+    if obsidian_signal:
+        keep.update(["obsidian_list_notes", "obsidian_read_note",
+                     "obsidian_search", "obsidian_list_tags"])
+        if has("write", "create", "new", "add", "make", "save") or has("append"):
+            keep.update(["obsidian_write_note", "obsidian_append_note"])
+        if has("append", "add to"):
+            keep.add("obsidian_append_note")
+        if has("search", "find", "look", "grep"):
+            keep.add("obsidian_search")
+        if has("tag", "tags", "hashtag", "hashtags"):
+            keep.add("obsidian_list_tags")
+        if has("backlink", "backlinks", "links to", "linked from", "references"):
+            keep.add("obsidian_backlinks")
+        if has("daily", "today", "yesterday"):
+            keep.add("obsidian_daily_note")
 
     # ---- GitHub ----
-    if has("notification", "notifications", "notify") or (has("unread") and has("github")):
+    if has("notification", "notifications", "notify", "alert", "alerts") or (has("unread") and has("github")):
         keep.update(["list_notifications", "get_notification_details",
                      "mark_all_notifications_read"])
-    if has("github") and has("new", "recent", "latest", "update"):
+    if has("github") and has("new", "recent", "latest", "update", "updates", "what's"):
         keep.add("list_notifications")
-    if has("repo", "repository", "repositories"):
+    if has("repo", "repository", "repositories", "repos"):
         keep.add("list_repos")
     if has("issue", "issues"):
         keep.update(["list_issues", "create_issue", "comment_on_issue"])
-    if has("pull") and has("request", "requests"):
+    if has("pull") and has("request", "requests", "pr", "prs"):
         keep.add("list_pull_requests")
-    if has("commit", "commits"):
+    if has("commit", "commits", "log"):
         keep.add("list_commits")
+    if has("create") and has("issue", "ticket"):
+        keep.add("create_issue")
+    if has("comment", "reply") and has("issue", "pr"):
+        keep.add("comment_on_issue")
 
-    # ---- Web / fetch (before Wikipedia so URLs containing 'wikipedia' still fetch) ----
+    # ---- Wikipedia / Web fetch / Web search ----
     if re.search(r"\bhttps?://", m) and not has("email", "gmail"):
         keep.add("fetch_page")
 
-    # ---- Wikipedia ----
     if has("wiki", "wikipedia"):
         if has("search", "look up", "lookup", "find"):
             keep.add("search_wikipedia")
-        elif has("say about", "about", "article"):
+        elif has("say about", "about", "article", "page"):
             keep.add("get_wikipedia_article")
         else:
             keep.update(["search_wikipedia", "get_wikipedia_article"])
-    # ---- Web ----
     else:
-        if has("google"):
+        if has("google") or (has("search", "look up", "lookup", "research", "find", "what's") and has("web", "internet", "online", "news", "latest", "current")):
             keep.add("web_search")
-        if has("search", "look up", "lookup", "research", "find") and not has("codebase", "repo", "project", "file", "files", "wiki", "wikipedia"):
+        if has("latest", "news", "recent", "happening", "current") and has("about", "regarding", "on", "with"):
             keep.add("web_search")
-        if has("latest", "news", "recent", "happening", "current"):
-            keep.add("web_search")
-        if has("fetch", "download", "scrape", "get") and has("url", "http", "link", "page"):
-            keep.add("fetch_page")
-        if re.search(r"\bhttps?://", m) and not has("email", "gmail", "wiki"):
+        if has("fetch", "download", "scrape", "get", "grab", "read") and has("url", "http", "link", "page"):
             keep.add("fetch_page")
 
     # ---- Email ----
-    if has("email", "emails", "mail", "gmail", "inbox"):
-        if has("send", "compose", "write") and not has("draft"):
+    if has("email", "emails", "mail", "gmail", "inbox", "message", "messages"):
+        if has("send", "compose", "write", "shoot", "fire off") and not has("draft"):
             keep.update(["send_email", "list_emails"])
-        elif has("draft") and has("save", "create", "make"):
+        elif has("draft") and has("save", "create", "make", "write"):
             keep.add("create_draft")
-        elif has("reply"):
+        elif has("reply", "respond", "answer", "get back"):
             keep.update(["reply_to_email", "get_email"])
         elif has("label", "labels"):
             keep.add("list_labels")
@@ -195,11 +218,11 @@ def filter_tools(message: str, all_tools: list) -> list:
             keep.add("mark_as_read")
         elif has("archive"):
             keep.add("archive_email")
-        elif has("trash", "delete"):
+        elif has("trash", "delete", "bin", "throw away"):
             keep.add("trash_email")
-        elif has("read", "open", "show") and has("from"):
+        elif has("read", "open", "show", "view") and has("from"):
             keep.add("get_email")
-        elif has("read", "open", "show"):
+        elif has("read", "open", "show", "view"):
             keep.update(["get_email", "list_emails"])
         else:
             keep.update(["list_emails", "get_email", "send_email",
@@ -207,18 +230,15 @@ def filter_tools(message: str, all_tools: list) -> list:
                          "mark_as_read", "archive_email", "trash_email"])
 
     # ---- Codebase ----
-    if has("codebases") or (has("codebase") and has("connected", "indexed", "available")):
+    if has("codebases") or (has("codebase") and has("connected", "indexed", "available", "my", "list", "show")):
         keep.add("list_codebases")
-    if has("connect", "index", "load") and has("codebase", "repo", "project", "folder"):
+    if has("connect", "index", "load", "add") and has("codebase", "repo", "project", "folder"):
         keep.update(["connect_codebase", "list_codebases"])
     if has("disconnect", "remove") and has("codebase"):
         keep.add("disconnect_codebase")
-    if has("tree", "structure", "layout", "hierarchy", "file list"):
+    if has("tree", "structure", "layout", "hierarchy", "file list", "files", "file") and has("codebase", "repo", "project"):
         keep.add("codebase_tree")
-    if has("files", "file") and has("codebase", "repo", "project") \
-            and not has("symbol", "function", "class", "read", "search", "patch"):
-        keep.add("codebase_tree")
-    if has("read all", "read entire", "read whole", "entire codebase", "whole codebase"):
+    if has("read all", "read entire", "read whole", "entire codebase", "whole codebase", "dump"):
         keep.add("codebase_read_all")
     if has("read", "show", "open") and has("file", "path") and has("codebase", "repo", "project"):
         keep.add("codebase_read")
@@ -235,53 +255,22 @@ def filter_tools(message: str, all_tools: list) -> list:
             keep.add("codebase_grep")
         else:
             keep.update(["codebase_search", "codebase_grep"])
-    if has("patch", "replace", "edit", "modify", "rewrite", "fix") and has("file", "code", "line"):
+    if has("patch", "replace", "edit", "modify", "rewrite", "fix", "change", "update") and has("file", "code", "line"):
         keep.update(["codebase_patch", "codebase_read"])
-    if has("write", "create") and has("file") and has("codebase"):
+    if has("write", "create", "add") and has("file") and has("codebase"):
         keep.add("codebase_write")
     if has("commit", "push") and has("codebase", "repo", "project", "git"):
         keep.add("codebase_git")
     if has("import", "imports", "dependency", "dependencies"):
         keep.add("codebase_imports")
 
-    # ---- Time ----
-    if has("time", "clock", "date", "today", "tonight", "tomorrow", "yesterday",
-           "now", "weekday", "week", "month", "year"):
-        keep.add("get_current_time")
-
-    # ---- Obsidian ----
-    obsidian_signal = (
-        has("obsidian")
-        or has("wikilink", "wikilinks", "backlink", "backlinks")
-        or (has("daily", "today") and has("note", "notes"))
-        or (has("note", "notes") and has("vault"))
-    )
-    if obsidian_signal:
-        keep.update(["obsidian_list_notes", "obsidian_read_note",
-                     "obsidian_search", "obsidian_list_tags"])
-        if has("create", "new", "add", "make") or has("append"):
-            keep.update(["obsidian_write_note", "obsidian_append_note"])
-        if has("append", "add to"):
-            keep.add("obsidian_append_note")
-        if has("search", "find", "grep"):
-            keep.add("obsidian_search")
-        if has("tag", "tags"):
-            keep.add("obsidian_list_tags")
-        if has("backlink", "backlinks", "links to", "linked from"):
-            keep.add("obsidian_backlinks")
-        if has("daily", "today", "yesterday"):
-            keep.add("obsidian_daily_note")
-
     # ---- Folder grants ----
-    if has("grant", "grants", "granted", "permission"):
+    if has("grant", "grants", "granted", "permission", "permissions", "allow", "authorize", "access"):
         keep.update(["list_grants", "request_folder_grant"])
 
     if keep:
         return [t for t in all_tools if t["function"]["name"] in keep]
-    # No classified intent. Return nothing so the model cannot hallucinate
-    # a tool call on a conversational prompt.
     return []
-
 
 # ---------------------------------------------------------------------
 # Agent loop
