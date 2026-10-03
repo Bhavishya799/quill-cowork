@@ -293,7 +293,7 @@ def obsidian_backlinks(name: str) -> str:
     return "\n".join(f"- {s}" for s in sorted(set(sources)))
 
 
-@tool
+@tool(destructive=True)
 def obsidian_daily_note(date: str = "today") -> str:
     """Read the daily note for a date, creating it if missing.
     date: 'today', 'yesterday', or 'YYYY-MM-DD'."""

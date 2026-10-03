@@ -39,8 +39,10 @@ HISTORY_MAX = 40
 CURRENT_SLOT = settings.DEFAULT_SLOT
 CURRENT_MODEL: Optional[str] = None
 SELECTION_FILE = Path(__file__).parent / "model_selection.json"
+PENDING_ARCHIVE: Dict[str, str] = {}
 
 UPLOAD_MAX_BYTES = 500 * 1024 * 1024
+TURN_TIMEOUT_SECONDS = 600  # hard cap per turn (10 min)
 MONITOR_MIN_INTERVAL = 60
 MONITOR_MAX_INTERVAL = 86400
 
@@ -297,28 +299,23 @@ async def chat(req: ChatRequest):
 
     auto_path = _auto_codebase_path(req.message)
     if auto_path:
-        from tools.codebase import connect_codebase
-        try:
-            result = connect_codebase(auto_path)
-        except Exception as e:
-            result = f"connect failed: {type(e).__name__}: {e}"
+        PENDING_ARCHIVE[req.session_id] = auto_path
+        reply = (f"Detected archive at {auto_path}. "
+                 f"Say 'connect it' and I will request confirmation.")
         history = _session_get(req.session_id)
-        history.append({"role": "user", "content": "[connected codebase from attachment]"})
-        history.append({"role": "assistant", "content": result})
+        history.append({"role": "user", "content": req.message})
+        history.append({"role": "assistant", "content": reply})
         _session_put(req.session_id, history[-HISTORY_MAX:])
-        return ChatResponse(
-            reply=result,
-            tool_calls=[{"tool": "connect_codebase",
-                         "arguments": {"source": auto_path},
-                         "result": result[:500]}],
-            session_id=req.session_id,
-        )
+        return ChatResponse(reply=reply, tool_calls=[],
+                            session_id=req.session_id)
+
+    msg_for_agent = _inject_pending_archive(req.message, req.session_id)
 
     history = _session_get(req.session_id)
     model = _current_model()
     try:
         reply, calls = await run_agent(
-            req.message, history=history, model=model,
+            msg_for_agent, history=history, model=model,
             confirm_callback=None, session_id=req.session_id,
         )
     except Exception as e:
@@ -695,7 +692,7 @@ async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     pending: Dict[str, asyncio.Event] = {}
     decisions: Dict[str, bool] = {}
-    running: Optional[asyncio.Task] = None
+    running_box: Dict[str, Optional[asyncio.Task]] = {"task": None}
 
     async def confirm_callback(call_id: str, tool: str, args: dict) -> bool:
         event = asyncio.Event()
@@ -717,6 +714,36 @@ async def websocket_endpoint(ws: WebSocket):
         approved = decisions.pop(call_id, False)
         pending.pop(call_id, None)
         return approved
+
+    async def process_and_clear(msg: str, sid: str):
+        """Run one turn, enforce a hard timeout, always clear the slot."""
+        try:
+            await asyncio.wait_for(process(msg, sid),
+                                   timeout=TURN_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            try:
+                await ws.send_json({
+                    "type": "error",
+                    "message": f"turn timed out after {TURN_TIMEOUT_SECONDS}s",
+                })
+            except Exception:
+                pass
+        except asyncio.CancelledError:
+            try:
+                await ws.send_json({"type": "error", "message": "cancelled"})
+            except Exception:
+                pass
+            raise
+        except Exception as e:
+            try:
+                await ws.send_json({
+                    "type": "error",
+                    "message": f"{type(e).__name__}: {e}",
+                })
+            except Exception:
+                pass
+        finally:
+            running_box["task"] = None
 
     async def process(msg: str, sid: str):
         await ws.send_json({"type": "thinking"})
@@ -750,30 +777,28 @@ async def websocket_endpoint(ws: WebSocket):
 
         auto_path = _auto_codebase_path(msg)
         if auto_path:
-            from tools.codebase import connect_codebase
-            try:
-                result = connect_codebase(auto_path)
-            except Exception as e:
-                result = f"connect failed: {type(e).__name__}: {e}"
+            PENDING_ARCHIVE[sid] = auto_path
+            reply = (f"Detected archive at {auto_path}. "
+                     f"Say 'connect it' and I will request confirmation.")
             history = _session_get(sid)
-            history.append({"role": "user", "content": "[connected codebase from attachment]"})
-            history.append({"role": "assistant", "content": result})
+            history.append({"role": "user", "content": msg})
+            history.append({"role": "assistant", "content": reply})
             _session_put(sid, history[-HISTORY_MAX:])
             await ws.send_json({
                 "type": "reply",
-                "reply": result,
-                "tool_calls": [{"tool": "connect_codebase",
-                                "arguments": {"source": auto_path},
-                                "result": result[:500]}],
+                "reply": reply,
+                "tool_calls": [],
                 "session_id": sid,
             })
             return
+
+        msg_for_agent = _inject_pending_archive(msg, sid)
 
         history = _session_get(sid)
         model = _current_model()
         try:
             reply, calls = await run_agent(
-                msg, history=history, model=model,
+                msg_for_agent, history=history, model=model,
                 confirm_callback=confirm_callback, session_id=sid,
             )
         except Exception as e:
@@ -813,7 +838,15 @@ async def websocket_endpoint(ws: WebSocket):
                     pending[cid].set()
                 continue
 
-            if running and not running.done():
+            if payload.get("type") == "cancel":
+                t = running_box["task"]
+                if t and not t.done():
+                    t.cancel()
+                running_box["task"] = None
+                continue
+
+            t = running_box["task"]
+            if t and not t.done():
                 await ws.send_json({"type": "error", "message": "busy"})
                 continue
 
@@ -821,10 +854,34 @@ async def websocket_endpoint(ws: WebSocket):
             if not isinstance(sid, str) or len(sid) > 128:
                 sid = "default"
             msg = payload.get("message", "")
-            running = asyncio.create_task(process(msg, sid))
+            running_box["task"] = asyncio.create_task(
+                process_and_clear(msg, sid)
+            )
     except WebSocketDisconnect:
-        if running:
-            running.cancel()
+        t = running_box["task"]
+        if t and not t.done():
+            t.cancel()
+
+
+def _inject_pending_archive(message: str, sid: str) -> str:
+    """Inject the pending archive path into a short connect follow-up."""
+    pending = PENDING_ARCHIVE.get(sid)
+    if not pending:
+        return message
+    text = (message or "").strip()
+    if not text:
+        return message
+    lower = text.lower()
+    if "connect" not in lower:
+        return message
+    if len(text) > 80:
+        return message
+    if "http://" in lower or "https://" in lower:
+        return message
+    if re.search(r"[a-z]:[\\/]", lower):
+        return message
+    PENDING_ARCHIVE.pop(sid, None)
+    return f"{text} (path: {pending})"
 
 
 if __name__ == "__main__":

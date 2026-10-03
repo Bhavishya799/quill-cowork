@@ -12,9 +12,14 @@ class OllamaProvider(BaseProvider):
 
     def __init__(self):
         self.default_model = os.getenv("OLLAMA_MODEL", "quill")
-        self.client = ollama.Client(host=os.getenv("OLLAMA_HOST", "http://localhost:11434"))
+        self.client = ollama.Client(
+            host=os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        )
 
     def chat(self, messages, tools=None, model=None):
+        # Output cap + low temperature. Without num_predict the
+        # abliterated model narrates for thousands of tokens when it
+        # should be calling a tool.
         last_error = None
         for attempt in range(3):
             try:
@@ -23,7 +28,13 @@ class OllamaProvider(BaseProvider):
                     messages=messages,
                     tools=tools or None,
                     think=False,
-                    options={"num_ctx": 8192},
+                    options={
+                        "num_ctx": 8192,
+                        "num_predict": 1024,
+                        "temperature": 0.2,
+                        "top_p": 0.9,
+                        "repeat_penalty": 1.15,
+                    },
                 )
                 msg = response["message"]
                 return {

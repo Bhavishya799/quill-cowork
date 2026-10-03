@@ -41,3 +41,10 @@ evaluation/safety_v2_results.json
 strip_slop.py
 
 dump_all.py
+
+# Backups
+*.bak
+
+# One-shot fix scripts (local only)
+fix_quill_codebase_summary.py
+fix_quill_spiral.py

@@ -66,6 +66,34 @@ def safe_name(name: str) -> str:
     return "".join(c for c in str(name) if c.isalnum() or c in "-_.").strip("-_.")
 
 
+def _resolve_name(name: str) -> Optional[str]:
+    """Fuzzy-resolve a user-supplied codebase identifier to an indexed
+    name. Handles case, trailing path components, and the
+    single-codebase shortcut so the model does not have to remember
+    the exact name."""
+    n = safe_name(name or "")
+    if n and (INDEX_ROOT / n / "meta.json").exists():
+        return n
+    if not INDEX_ROOT.exists():
+        return None
+    entries = [d for d in INDEX_ROOT.iterdir()
+               if d.is_dir() and (d / "meta.json").exists()]
+    if n:
+        lower = n.lower()
+        for d in entries:
+            if d.name.lower() == lower:
+                return d.name
+        if "/" in (name or "") or "\\" in (name or ""):
+            leaf = safe_name(re.split(r"[\\/]", name or "")[-1])
+            if leaf:
+                for d in entries:
+                    if d.name.lower() == leaf.lower():
+                        return d.name
+    if len(entries) == 1:
+        return entries[0].name
+    return None
+
+
 def index_dir(name: str) -> Path:
     return INDEX_ROOT / safe_name(name)
 
@@ -269,6 +297,7 @@ def disconnect(name: str) -> bool:
 
 
 def get_summary(name: str, max_chars: int = 3500) -> str:
+    name = _resolve_name(name) or name
     f = index_dir(name) / "summary.md"
     if not f.exists():
         return f"no index for '{name}'"
@@ -333,6 +362,8 @@ def grep(name: str, pattern: str, limit: int = 40) -> str:
     files = index_dir(name) / "files.jsonl"
     if not files.exists():
         return f"no index for '{name}'"
+    if len(pattern) > 100:
+        return "refused: regex pattern over 100 characters"
     try:
         rx = re.compile(pattern, re.IGNORECASE)
     except re.error as e:
@@ -345,6 +376,8 @@ def grep(name: str, pattern: str, limit: int = 40) -> str:
             except Exception:
                 continue
             for i, ln in enumerate(rec["content"].splitlines(), 1):
+                if len(ln) > 2000:
+                    ln = ln[:2000]
                 if rx.search(ln):
                     out.append(f"{rec['path']}:{i}: {ln.strip()[:140]}")
                     if len(out) >= limit:

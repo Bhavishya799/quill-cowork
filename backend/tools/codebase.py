@@ -399,7 +399,7 @@ def codebase_read(name: str, path: str) -> str:
     return cb.read_file(name, path)
 
 
-@tool
+@tool(destructive=True)
 def codebase_read_all(name: str) -> str:
     """Read the entire indexed codebase in a single call.
     Returns every file with path headers, up to ~200 KB.

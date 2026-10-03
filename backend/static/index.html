@@ -729,6 +729,11 @@ function decide(msgId, kind){
 function stopRun(){
   runId++;
   clearInterval(streamTimer);
+  try {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'cancel' }));
+    }
+  } catch(e){}
   const chatId = state.runChat;
   if (chatId != null){
     const c = state.chats.find(c => c.id === chatId);
