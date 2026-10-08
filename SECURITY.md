@@ -38,3 +38,36 @@ Never commit vault.enc, .env, or audit.log.jsonl.
 ## Reporting
 
 Open an issue on GitHub. For sensitive reports, email the maintainer.
+
+## Audio
+
+Streaming speech recognition and text-to-speech run entirely on the
+local machine.
+
+- Recognition uses `faster-whisper`. The model is downloaded once
+  from Hugging Face on first use and cached under
+  `%USERPROFILE%\.cache\huggingface\hub`. After that, no network
+  calls are made.
+- Text-to-speech uses `pyttsx3`, which drives the OS voice engine
+  (SAPI on Windows). No network.
+- Audio bytes are streamed over the existing local WebSocket at
+  `/ws/audio`. They are not logged or written to disk beyond the
+  temporary file `faster-whisper` uses internally during decode.
+
+The `/ws/audio` endpoint is origin-gated and shares the same auth
+rules as the main `/ws` chat socket.
+
+## Chat history
+
+Every chat is persisted to `backend/workspace/.quill/chat.db`, a
+SQLite database. It contains the raw text of every user prompt and
+assistant reply in the session.
+
+- The file lives under `workspace/`, which is gitignored.
+- It is not encrypted at rest.
+- Deleting a chat removes its rows immediately.
+- If you handle sensitive prompts, delete the database manually:
+  `del backend\workspace\.quill\chat.db`
+
+Do not commit `chat.db`. It is not in the repo and should never be
+added.

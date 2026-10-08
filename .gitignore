@@ -58,3 +58,12 @@ restore_and_fix.py
 write_audio.py
 finalize_audio.py
 
+# Chat history (contains raw prompts and replies)
+backend/workspace/.quill/chat.db
+backend/workspace/.quill/chat.db-wal
+backend/workspace/.quill/chat.db-shm
+
+# Audio model cache (downloaded by faster-whisper)
+*.onnx
+*.bin
+models/whisper/
