@@ -528,6 +528,33 @@ async def run_agent(
             "tool_calls": calls,
         })
 
+        async def _execute_tool_call(name: str, args: dict):
+            allowed, rreason = check_rate(name)
+            if not allowed:
+                log_event("rate_limited", tool=name)
+                return f"Rate limited: {rreason}"
+
+            if is_destructive(name):
+                if confirm_callback is None:
+                    log_event("confirm_unavailable", tool=name)
+                    return "This action requires interactive confirmation."
+                call_id = uuid.uuid4().hex[:12]
+                approved = await confirm_callback(call_id, name, args)
+                if approved:
+                    result = await asyncio.to_thread(call_tool, name, args)
+                    log_event("confirm_approved", tool=name, args=args)
+                    return result
+                log_event("confirm_declined", tool=name, args=args)
+                return "User declined this action."
+
+            result = await asyncio.to_thread(call_tool, name, args)
+            flagged, matched = scan_injection(result)
+            if flagged:
+                log_event("injection_detected", tool=name, matched=matched)
+                return f"[INJECTION WARNING] content withheld ({matched})"
+            return result
+
+        parsed_calls = []
         for call in calls:
             fn = call.get("function") or {}
             name = fn.get("name")
@@ -537,35 +564,34 @@ async def run_agent(
                     args = json.loads(args)
                 except Exception:
                     args = {}
-            if not name:
-                continue
+            if name:
+                parsed_calls.append((name, args))
 
-            allowed, rreason = check_rate(name)
-            if not allowed:
-                result = "Rate limited: " + rreason
-                log_event("rate_limited", tool=name)
-            elif is_destructive(name):
-                if confirm_callback is None:
-                    result = "This action requires interactive confirmation."
-                    log_event("confirm_unavailable", tool=name)
-                else:
-                    call_id = uuid.uuid4().hex[:12]
-                    approved = await confirm_callback(call_id, name, args)
-                    if approved:
-                        result = await asyncio.to_thread(call_tool, name, args)
-                        log_event("confirm_approved", tool=name, args=args)
-                    else:
-                        result = "User declined this action."
-                        log_event("confirm_declined", tool=name, args=args)
-            else:
-                result = await asyncio.to_thread(call_tool, name, args)
+        if not parsed_calls:
+            continue
 
-            # Scan EVERY tool result for injection, destructive or not.
-            flagged, matched = scan_injection(result)
-            if flagged:
-                log_event("injection_detected", tool=name, matched=matched)
-                result = "[INJECTION WARNING] content withheld (" + matched + ")"
+        # Multitasking: independent non-destructive calls run in
+        # parallel. Destructive calls stay sequential so confirmation
+        # prompts remain ordered and auditable.
+        has_destructive = any(is_destructive(n) for n, _ in parsed_calls)
+        max_parallel = max(1, int(getattr(settings, "MAX_PARALLEL_TOOLS", 4)))
 
+        if len(parsed_calls) > 1 and not has_destructive:
+            sem = asyncio.Semaphore(max_parallel)
+
+            async def _guarded(n, a):
+                async with sem:
+                    return await _execute_tool_call(n, a)
+
+            results = await asyncio.gather(
+                *(_guarded(n, a) for n, a in parsed_calls)
+            )
+        else:
+            results = []
+            for n, a in parsed_calls:
+                results.append(await _execute_tool_call(n, a))
+
+        for (name, args), result in zip(parsed_calls, results):
             safe_args = {
                 k: (redact_log(v) if isinstance(v, str) else v)
                 for k, v in (args or {}).items()
@@ -575,16 +601,15 @@ async def run_agent(
                         "result": result[:500]})
             _note_tool_call(session_id, name, args, result)
 
-            # Wrap tool output in explicit untrusted-data markers.
             _safe_result = result.replace(
                 "<<END_UNTRUSTED_TOOL_RESULT", "<<_E_UTR_"
             ).replace(
                 "<<UNTRUSTED_TOOL_RESULT", "<<_U_UTR_"
             )
             wrapped = (
-                "<<UNTRUSTED_TOOL_RESULT tool=" + name + ">>\n"
-                + _safe_result + "\n"
-                + "<<END_UNTRUSTED_TOOL_RESULT>>"
+                f"<<UNTRUSTED_TOOL_RESULT tool={name}>>\n"
+                f"{_safe_result}\n"
+                f"<<END_UNTRUSTED_TOOL_RESULT>>"
             )
             messages.append({
                 "role": "tool",

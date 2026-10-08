@@ -1,4 +1,5 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
 from email.message import EmailMessage
 
 import httpx
@@ -123,29 +124,30 @@ def list_emails(query: str = "", max_results: int = 10) -> str:
 
     from email.utils import parsedate_to_datetime
 
-    entries = []
-    for m in msgs:
+    def _fetch_meta(m):
         s, det = _request(
             "GET", f"/messages/{m['id']}",
             params={"format": "metadata",
                     "metadataHeaders": ["From", "Subject", "Date"]},
         )
         if s != 200 or not isinstance(det, dict):
-            entries.append({
+            return {
                 "date_ts": 0,
                 "line": f"- {m['id']} (metadata unavailable)",
-            })
-            continue
+            }
         hs = det.get("payload", {}).get("headers", [])
         date_str = _hdr(hs, "Date")
         try:
             ts = parsedate_to_datetime(date_str).timestamp()
         except Exception:
             ts = 0
-        entries.append({
+        return {
             "date_ts": ts,
             "line": f"- [{m['id']}] {_hdr(hs,'From')} — {_hdr(hs,'Subject')} ({date_str})",
-        })
+        }
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        entries = list(ex.map(_fetch_meta, msgs))
 
     entries.sort(key=lambda e: e["date_ts"], reverse=True)
     return "\n".join(e["line"] for e in entries)
