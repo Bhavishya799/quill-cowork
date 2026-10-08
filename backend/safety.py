@@ -84,23 +84,10 @@ _EXTRA_BLOCKED = re.compile(
 )
 
 
-_EXTRA_BLOCKED = re.compile(
-    r"\b(?:"
-    r"hack(?:er|ers|ing|ed|s)?|"
-    r"phish(?:er|ers|ing|ed|es)?|"
-    r"exfiltrat(?:e|es|ed|ing|ion|ions)?|"
-    r"bypass(?:es|ed|ing)?\s+(?:antivirus|av|firewall|security|auth\w*)"
-    r")\b",
-    re.IGNORECASE,
-)
-
-
 def is_blocked(text: str) -> Tuple[bool, str]:
     if not text or not text.strip():
         return False, ""
     if _BLOCKED.search(text):
-        return True, "blocked_content"
-    if _EXTRA_BLOCKED.search(text):
         return True, "blocked_content"
     if _EXTRA_BLOCKED.search(text):
         return True, "blocked_content"
