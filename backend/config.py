@@ -21,6 +21,8 @@ class Settings:
     PORT = int(os.getenv("PORT", "8000"))
     MAX_TOOL_ITERATIONS = int(os.getenv("MAX_TOOL_ITERATIONS", "20"))
     MAX_PARALLEL_TOOLS = int(os.getenv("MAX_PARALLEL_TOOLS", "4"))
+    WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
+    TTS_RATE = int(os.getenv("TTS_RATE", "180"))
 
     WORKSPACE_ROOT = os.getenv("WORKSPACE_ROOT", "D:/Quill-Cowork/workspace")
 

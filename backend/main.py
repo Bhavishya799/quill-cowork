@@ -1,5 +1,6 @@
 import asyncio
 import json
+import numpy as np
 import os
 import re
 import shutil
@@ -8,9 +9,9 @@ import uuid
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Request, Form
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Request, Form, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +30,7 @@ from secret_store import detect as detect_secret, store as store_secret
 import auth
 import oauth
 import grants as grants_mod
+import chat_store
 
 
 SESSIONS: "OrderedDict[str, list]" = OrderedDict()
@@ -329,6 +331,57 @@ async def chat(req: ChatRequest):
     return ChatResponse(reply=reply, tool_calls=calls, session_id=req.session_id)
 
 
+class ChatSaveRequest(BaseModel):
+    title: str = "New task"
+    messages: List[Dict[str, Any]] = []
+
+
+class ChatRenameRequest(BaseModel):
+    title: str
+
+
+@app.get("/chats")
+async def chats_list():
+    chat_store.init()
+    return {"chats": chat_store.list_chats()}
+
+
+@app.get("/chats/{chat_id}")
+async def chats_get(chat_id: str):
+    chat_store.init()
+    c = chat_store.get_chat(chat_id)
+    if not c:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    hist = []
+    for m in c.get("messages", []):
+        role = m.get("role")
+        text = m.get("text") or ""
+        if role in ("user", "assistant") and text:
+            hist.append({"role": role, "content": text})
+    if hist:
+        _session_put(chat_id, hist[-HISTORY_MAX:])
+    return c
+
+
+@app.put("/chats/{chat_id}")
+async def chats_put(chat_id: str, req: ChatSaveRequest):
+    chat_store.init()
+    chat_store.upsert_chat(chat_id, req.title, req.messages)
+    return {"ok": True}
+
+
+@app.patch("/chats/{chat_id}")
+async def chats_patch(chat_id: str, req: ChatRenameRequest):
+    chat_store.init()
+    return {"ok": chat_store.rename_chat(chat_id, req.title)}
+
+
+@app.delete("/chats/{chat_id}")
+async def chats_delete(chat_id: str):
+    chat_store.init()
+    return {"ok": chat_store.delete_chat(chat_id)}
+
+
 @app.get("/tools")
 async def list_all_tools():
     return {"tools": get_ollama_tools()}
@@ -595,6 +648,33 @@ async def codebase_info_endpoint(name: str):
     return {"ok": True, "meta": meta, "tree": cb.get_tree(name, max_lines=300)}
 
 
+class SpeakRequest(BaseModel):
+    text: str
+    rate: int = 0
+
+
+@app.get("/audio/status")
+async def audio_status():
+    import audio
+    return audio.status()
+
+
+@app.post("/audio/speak")
+async def audio_speak(req: SpeakRequest):
+    import audio
+    try:
+        rate = req.rate or settings.TTS_RATE
+        wav = await audio.synthesize(req.text, rate=rate)
+        if not wav:
+            return Response(status_code=204)
+        return Response(content=wav, media_type="audio/wav")
+    except Exception as e:
+        return JSONResponse(
+            {"ok": False, "error": f"{type(e).__name__}: {e}"},
+            status_code=500,
+        )
+
+
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     UPLOADS_ROOT.mkdir(parents=True, exist_ok=True)
@@ -663,6 +743,176 @@ async def monitor_status():
         "last_run": monitor.last_run,
         "last_result": monitor.last_result,
     }
+
+
+@app.websocket("/ws/audio")
+async def ws_audio_endpoint(ws: WebSocket):
+    """Streaming speech recognition (v2)."""
+    import os as _os
+    _dbg_on = _os.getenv("QUILL_AUDIO_DEBUG", "0") == "1"
+
+    def _log(*a):
+        if _dbg_on:
+            print("[ws/audio]", *a)
+
+    if auth.is_enabled():
+        origin = ws.headers.get("origin", "")
+        same_origin = origin in _cors_origins
+        tok = ws.cookies.get(auth.COOKIE_NAME)
+        if not (same_origin or auth.verify_token(tok)):
+            await ws.close(code=4401)
+            return
+    else:
+        if _os.getenv("QUILL_ALLOW_LAN_NO_AUTH", "") != "1":
+            host = (ws.headers.get("host") or "").split(":")[0].lower()
+            if host and host not in ("localhost", "127.0.0.1", "::1", "[::1]"):
+                await ws.close(code=4403)
+                return
+
+    await ws.accept()
+    _log("connected")
+
+    import audio as _audio
+    from audio import StreamSession
+
+    try:
+        ready = _audio.status()
+        if not ready.get("ready"):
+            await ws.send_json({"type": "error",
+                                "message": ready.get("error") or "stt not ready"})
+            await ws.close()
+            return
+    except Exception as e:
+        await ws.send_json({"type": "error", "message": str(e)})
+        await ws.close()
+        return
+
+    session = None
+    lock = asyncio.Lock()
+    partial_task = None
+    stop_flag = {"stop": False}
+
+    async def emit_partials():
+        while not stop_flag["stop"]:
+            await asyncio.sleep(0.25)
+            if session is None:
+                continue
+            if not session.should_emit_partial():
+                continue
+            async with lock:
+                if stop_flag["stop"]:
+                    return
+                try:
+                    text = await session.partial()
+                except Exception:
+                    continue
+            if text:
+                try:
+                    await ws.send_json({"type": "partial", "text": text})
+                except Exception:
+                    return
+
+    try:
+        first = await ws.receive_text()
+        try:
+            hello = json.loads(first)
+        except Exception:
+            hello = {}
+        if hello.get("type") != "start":
+            await ws.send_json({"type": "error", "message": "expected start"})
+            await ws.close()
+            return
+        sample_rate = int(hello.get("sample_rate") or 48000)
+        if sample_rate < 8000 or sample_rate > 192000:
+            sample_rate = 48000
+        _log("start sample_rate=", sample_rate)
+        session = StreamSession(sample_rate=sample_rate)
+        partial_task = asyncio.create_task(emit_partials())
+
+        chunks = 0
+        while True:
+            msg = await ws.receive()
+            mtype = msg.get("type")
+            if mtype == "websocket.disconnect":
+                _log("client disconnected abruptly")
+                break
+            raw_bytes = msg.get("bytes")
+            if raw_bytes:
+                pcm = np.frombuffer(raw_bytes, dtype=np.int16)
+                if pcm.size:
+                    session.add(pcm.copy())
+                    chunks += 1
+                continue
+            text = msg.get("text")
+            if text is None:
+                continue
+            try:
+                ctl = json.loads(text)
+            except Exception:
+                continue
+            ct = ctl.get("type")
+            _log("ctl", ct, "chunks", chunks,
+                 "duration", round(session.duration, 2))
+            if ct == "end":
+                try:
+                    await ws.send_json({"type": "ack"})
+                except Exception:
+                    pass
+                break
+            if ct == "cancel":
+                stop_flag["stop"] = True
+                try:
+                    await ws.send_json({"type": "cancelled"})
+                except Exception:
+                    pass
+                break
+
+        stop_flag["stop"] = True
+        if partial_task is not None:
+            partial_task.cancel()
+            try:
+                await asyncio.wait_for(partial_task, timeout=0.5)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            partial_task = None
+
+        if session is not None:
+            _log("finalizing, chunks", chunks,
+                 "duration", round(session.duration, 2))
+            async with lock:
+                try:
+                    result = await session.finalize()
+                except Exception as e:
+                    _log("finalize failed", e)
+                    await ws.send_json({
+                        "type": "error",
+                        "message": f"finalize failed: {type(e).__name__}: {e}",
+                    })
+                    return
+            _log("final text", repr(result.text))
+            try:
+                await ws.send_json({"type": "final", **result.to_dict()})
+            except Exception as e:
+                _log("final send failed", e)
+
+    except WebSocketDisconnect:
+        _log("ws disconnect")
+    except Exception as e:
+        _log("exception", type(e).__name__, e)
+        try:
+            await ws.send_json({"type": "error",
+                                "message": f"{type(e).__name__}: {e}"})
+        except Exception:
+            pass
+    finally:
+        stop_flag["stop"] = True
+        if partial_task is not None:
+            partial_task.cancel()
+        try:
+            await ws.close()
+        except Exception:
+            pass
+        _log("closed")
 
 
 @app.websocket("/ws")
