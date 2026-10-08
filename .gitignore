@@ -48,3 +48,13 @@ dump_all.py
 # One-shot fix scripts (local only)
 fix_quill_codebase_summary.py
 fix_quill_spiral.py
+# One-shot scripts (local only)
+cleanup.py
+apply_*.py
+wire_*.py
+fix_*.py
+strip_*.py
+restore_and_fix.py
+write_audio.py
+finalize_audio.py
+
