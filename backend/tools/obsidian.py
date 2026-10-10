@@ -38,9 +38,7 @@ class ObsidianConnector:
     pass
 
 
-# ---------------------------------------------------------------------
 # Configuration and path safety
-# ---------------------------------------------------------------------
 
 def _vault_root() -> Optional[Path]:
     raw = (vault.get_safe("OBSIDIAN_VAULT")
@@ -83,9 +81,7 @@ def _iter_notes(root: Path):
                 yield Path(dirpath) / f
 
 
-# ---------------------------------------------------------------------
 # Markdown parsing
-# ---------------------------------------------------------------------
 
 def _parse_frontmatter(text: str) -> Tuple[Dict[str, str], str]:
     if not text.startswith("---\n"):
@@ -117,9 +113,7 @@ def _extract_links(text: str) -> List[str]:
     return sorted(set(m.strip() for m in _LINK_RE.findall(text)))
 
 
-# ---------------------------------------------------------------------
 # Tools
-# ---------------------------------------------------------------------
 
 @tool
 def obsidian_list_notes(folder: str = "", limit: int = 100) -> str:

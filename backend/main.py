@@ -135,11 +135,30 @@ class CodebaseDisconnectRequest(BaseModel):
     name: str
 
 
+def _print_search_status():
+    import os as _os
+    sx = (_os.getenv("SEARXNG_URL", "") or "").strip()
+    tv = (_os.getenv("TAVILY_API_KEY", "") or "").strip()
+    if not sx and not tv:
+        print("search: DISABLED "
+              "(set TAVILY_API_KEY or SEARXNG_URL in backend/.env)")
+        return
+    parts = []
+    if sx:
+        parts.append(f"searxng={sx}")
+    if tv:
+        parts.append("tavily=configured")
+    else:
+        parts.append("tavily=empty")
+    print("search: " + " ".join(parts))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _load_selection()
     print(f"quill: {len(list_tools())} tools, {len(get_connectors())} connectors")
     print(f"auth: {'enabled' if auth.is_enabled() else 'disabled (no password set)'}")
+    _print_search_status()
     yield
     monitor.stop()
 
@@ -315,10 +334,22 @@ async def chat(req: ChatRequest):
 
     history = _session_get(req.session_id)
     model = _current_model()
+
+    async def _http_on_event(ev):
+        # HTTP is stateless; search events have no live channel here.
+        # Log them so an /audit view can still surface them.
+        try:
+            from audit import log_event
+            log_event("search_event", **{k: v for k, v in ev.items() if k != "type"},
+                      event=ev.get("type", ""))
+        except Exception:
+            pass
+
     try:
         reply, calls = await run_agent(
             msg_for_agent, history=history, model=model,
             confirm_callback=None, session_id=req.session_id,
+            on_event=_http_on_event,
         )
     except Exception as e:
         reply = _model_error_reply(e, model)
@@ -380,6 +411,30 @@ async def chats_patch(chat_id: str, req: ChatRenameRequest):
 async def chats_delete(chat_id: str):
     chat_store.init()
     return {"ok": chat_store.delete_chat(chat_id)}
+
+
+@app.get("/search/status")
+async def search_status():
+    from agent import is_search_enabled
+    from tools.search import is_configured
+    import os as _os
+    return {
+        "enabled": is_search_enabled(),
+        "configured": is_configured(),
+        "searxng": (_os.getenv("SEARXNG_URL", "") or "").strip(),
+        "tavily": bool((_os.getenv("TAVILY_API_KEY", "") or "").strip()),
+    }
+
+
+class SearchToggleRequest(BaseModel):
+    enabled: bool
+
+
+@app.post("/search/toggle")
+async def search_toggle(req: SearchToggleRequest):
+    from agent import set_search_enabled
+    set_search_enabled(req.enabled)
+    return {"ok": True, "enabled": req.enabled}
 
 
 @app.get("/tools")
@@ -1046,10 +1101,20 @@ async def websocket_endpoint(ws: WebSocket):
 
         history = _session_get(sid)
         model = _current_model()
+
+        async def _on_event(ev):
+            print(f"[trace] _on_event called: {ev.get('type')}", flush=True)
+            try:
+                await ws.send_json(ev)
+                print(f"[trace] _on_event sent: {ev.get('type')}", flush=True)
+            except Exception as e:
+                print(f"[trace] _on_event send FAILED: {e}", flush=True)
+
         try:
             reply, calls = await run_agent(
                 msg_for_agent, history=history, model=model,
                 confirm_callback=confirm_callback, session_id=sid,
+                on_event=_on_event,
             )
         except Exception as e:
             reply = _model_error_reply(e, model)

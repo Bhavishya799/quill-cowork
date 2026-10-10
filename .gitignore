@@ -67,3 +67,15 @@ backend/workspace/.quill/chat.db-shm
 *.onnx
 *.bin
 models/whisper/
+
+# One-shot scripts (local only)
+fix_all.py
+apply_*.py
+wire_*.py
+fix_*.py
+strip_*.py
+cleanup.py
+update_docs.py
+restore_and_fix.py
+write_audio.py
+finalize_audio.py

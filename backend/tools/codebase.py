@@ -40,9 +40,7 @@ class CodebaseConnector:
     pass
 
 
-# ---------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------
 
 def _safe(name: str) -> str:
     return "".join(c for c in str(name) if c.isalnum() or c in "-_.").strip("-_.")
@@ -208,9 +206,7 @@ def _flatten_single_root(dest: Path) -> Path:
     return dest
 
 
-# ---------------------------------------------------------------------
 # Lifecycle
-# ---------------------------------------------------------------------
 
 @tool(destructive=True)
 def connect_codebase(source: str, name: str = "") -> str:
@@ -354,9 +350,7 @@ def disconnect_codebase(name: str) -> str:
     return f"no codebase named '{name}'"
 
 
-# ---------------------------------------------------------------------
 # Read / navigate
-# ---------------------------------------------------------------------
 
 @tool
 def codebase_info(name: str) -> str:
@@ -434,9 +428,7 @@ def codebase_imports(name: str, path: str, direction: str = "out") -> str:
     return cb.imports(name, path, direction=direction)
 
 
-# ---------------------------------------------------------------------
 # Edit
-# ---------------------------------------------------------------------
 
 @tool(destructive=True)
 def codebase_write(name: str, path: str, content: str) -> str:
@@ -456,9 +448,7 @@ def codebase_patch(name: str, path: str, find: str, replace: str,
     return cb.patch_file(name, path, find, replace, count=count)
 
 
-# ---------------------------------------------------------------------
 # Git
-# ---------------------------------------------------------------------
 
 def _write_askpass(token: str) -> str:
     """Write a short-lived askpass script OUTSIDE the repo so `git add -A`

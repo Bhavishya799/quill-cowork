@@ -10,3 +10,4 @@ python-multipart>=0.0.20
 faster-whisper>=1.0.3
 numpy>=1.26
 pyttsx3>=2.90
+trafilatura>=1.9.0

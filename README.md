@@ -26,7 +26,7 @@ and re-measurement is pending.
 ## Features
 
 - 52 tools across 9 connectors: Filesystem, GitHub, Gmail, Web,
-  Wikipedia, Search (Tavily), Folder Grants, Codebase, Obsidian
+  Wikipedia, Search (Tavily + optional SearxNG), Folder Grants, Codebase, Obsidian
 - Runs a 4B model on an 8 GB GPU, or CPU-only with the cpu-* slots
 - Parallel tool execution: independent non-destructive calls run
   concurrently (bounded by `MAX_PARALLEL_TOOLS`, default 4)
@@ -34,6 +34,7 @@ and re-measurement is pending.
 - Encrypted credential vault (AES-256-GCM, OS keychain-backed)
 - Codebase indexing with search, grep, symbol lookup, read-all, and
   patch-based edits
+- Local web search via SearxNG (optional; Tavily fallback)
 - Secret detection: pasted API keys are stored in the vault, not the model
 - Append-only audit log of every tool call, approval, and refusal
 - Streaming speech recognition (Whisper via `faster-whisper`), with

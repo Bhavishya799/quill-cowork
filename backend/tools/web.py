@@ -20,6 +20,46 @@ class WebConnector:
     pass
 
 
+# Text extraction. trafilatura handles real-world article HTML much
+# better than a regex strip. Optional dependency -- if it is missing,
+# we fall back to the regex.
+
+try:
+    from trafilatura import extract as _tra_extract  # type: ignore
+    _HAVE_TRAFILATURA = True
+except ImportError:
+    _tra_extract = None
+    _HAVE_TRAFILATURA = False
+
+
+def _regex_extract(html: str, max_chars: int) -> str:
+    html = re.sub(r"<script[^>]*>.*?</script>", " ", html,
+                  flags=re.DOTALL | re.IGNORECASE)
+    html = re.sub(r"<style[^>]*>.*?</style>", " ", html,
+                  flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", " ", html)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_chars]
+
+
+def _extract_text(html: str, max_chars: int) -> str:
+    """Try trafilatura, fall back to the regex. Never raises."""
+    if _HAVE_TRAFILATURA and _tra_extract is not None:
+        try:
+            text = _tra_extract(
+                html,
+                include_comments=False,
+                include_tables=True,
+                favor_precision=True,
+            )
+            if text and text.strip():
+                text = re.sub(r"\n{3,}", "\n\n", text).strip()
+                return text[:max_chars]
+        except Exception:
+            pass
+    return _regex_extract(html, max_chars)
+
+
 @tool
 def fetch_page(url: str, max_chars: int = 4000) -> str:
     """Fetch a public web page and return its visible text."""
@@ -60,11 +100,7 @@ def fetch_page(url: str, max_chars: int = 4000) -> str:
                       or "json" in ctype or "xml" in ctype or "html" in ctype):
         return f"refused: content-type is {ctype}, not text"
 
-    html = r.text
-    html = re.sub(r"<script[^>]*>.*?</script>", " ", html, flags=re.DOTALL | re.IGNORECASE)
-    html = re.sub(r"<style[^>]*>.*?</style>", " ", html, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"<[^>]+>", " ", html)
-    text = re.sub(r"\s+", " ", text).strip()[:max_chars]
+    text = _extract_text(r.text, max_chars)
 
     flagged, matched = scan_injection(text)
     if flagged:

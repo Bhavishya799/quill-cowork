@@ -569,9 +569,7 @@ def git_push(name: str, remote: str = "origin", branch: str = "") -> str:
         return f"push failed: {(r.stdout + r.stderr).strip()[:400]}"
     return (r.stdout or r.stderr or "pushed").strip()[:400]
 
-# =====================================================================
 # Phase One: symbols, imports, patch
-# =====================================================================
 
 _PY_FN = None
 

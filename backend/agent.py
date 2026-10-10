@@ -21,7 +21,6 @@ load_all_tools()
 from tools.registry import get_ollama_tools, call_tool, is_destructive
 
 
-# ---------------------------------------------------------------------
 # System prompts. Two variants.
 #
 # SYSTEM_PROMPT_TOOLS is used whenever tool schemas are sent to the
@@ -29,7 +28,6 @@ from tools.registry import get_ollama_tools, call_tool, is_destructive
 # the 4B abliterated model narrate its reasoning instead of acting.
 #
 # SYSTEM_PROMPT_CHAT is used when no tools are offered.
-# ---------------------------------------------------------------------
 
 SYSTEM_PROMPT_TOOLS = (
     "You are Quill. Use the structured tool-call channel. "
@@ -52,11 +50,18 @@ SYSTEM_PROMPT_CHAT = (
 
 ConfirmCallback = Callable[[str, str, Dict[str, Any]], Awaitable[bool]]
 
+# Global web-search toggle. Set by the frontend, defaults to on.
+_SEARCH_ENABLED = {"on": True}
 
-# ---------------------------------------------------------------------
+def set_search_enabled(on: bool) -> None:
+    _SEARCH_ENABLED["on"] = bool(on)
+
+def is_search_enabled() -> bool:
+    return _SEARCH_ENABLED["on"]
+
+
 # Session working set: compressed notes about what the model has done.
 # Has TTL to avoid unbounded growth.
-# ---------------------------------------------------------------------
 
 _WORKING_SET: Dict[str, list] = {}
 _WORKING_SET_TS: Dict[str, float] = {}
@@ -127,9 +132,7 @@ def _note_tool_call(session_id: str, name: str, args: dict, result: str):
         _ws_add(session_id, "connected codebase '" + str(args.get("name", "?")) + "'")
 
 
-# ---------------------------------------------------------------------
 # Tool routing: intent-based, tight slices.
-# ---------------------------------------------------------------------
 
 def filter_tools(message: str, all_tools: list) -> list:
     m = (message or "").lower()
@@ -137,6 +140,20 @@ def filter_tools(message: str, all_tools: list) -> list:
 
     def has(*words):
         return any(re.search(r"\b" + re.escape(w), m) for w in words)
+
+    # broadened web_search detection (patch_router.py)
+    _code_ctx = re.search(
+        r"\b(codebase|repo|repository|code|project|function|class|file|files)\b",
+        m,
+    )
+    if not _code_ctx:
+        if re.match(
+            r"^\s*(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:search|google|look\s*up|research)\b",
+            m,
+        ):
+            keep.add("web_search")
+        elif re.search(r"\b(?:search|google|look\s*up|research)\s+(?:for|about|on)\b", m):
+            keep.add("web_search")
 
     # ---- Filesystem ----
     if has("list", "show", "what", "what's", "display") and has(
@@ -308,10 +325,8 @@ def filter_tools(message: str, all_tools: list) -> list:
     return []
 
 
-# ---------------------------------------------------------------------
 # Spiral detection. Broad list because the model uses many phrasings
 # to narrate instead of acting.
-# ---------------------------------------------------------------------
 
 _SPIRAL_PHRASES = [
     r"i'?ll (?:start|try|attempt|check|look|see|read|list|use|call|begin|examine|provide|describe|simulate|go)",
@@ -348,11 +363,9 @@ def _looks_like_spiral(text: str) -> bool:
     return hits >= 2
 
 
-# ---------------------------------------------------------------------
 # Deterministic tool dispatch. When the model refuses to emit a tool
 # call on a clear-intent prompt, the router already knows what the
 # user wants -- call it ourselves.
-# ---------------------------------------------------------------------
 
 def _deterministic_tool_call(user_message: str, tools: list):
     m = (user_message or "").lower().strip()
@@ -395,9 +408,7 @@ def _deterministic_tool_call(user_message: str, tools: list):
     return None
 
 
-# ---------------------------------------------------------------------
 # Agent loop
-# ---------------------------------------------------------------------
 
 async def run_agent(
     user_message: str,
@@ -405,6 +416,7 @@ async def run_agent(
     model: str = None,
     confirm_callback: Optional[ConfirmCallback] = None,
     session_id: str = "default",
+    on_event: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     blocked, reason = is_blocked(user_message)
     if blocked:
@@ -460,6 +472,10 @@ async def run_agent(
     log: List[Dict[str, Any]] = []
     nudge_used = False
     det_used = False
+
+    # Tool-loop detection: abort a turn after 3 identical calls.
+    _loop_fp = None
+    _loop_count = 0
 
     for _ in range(settings.MAX_TOOL_ITERATIONS):
         msg = await asyncio.to_thread(
@@ -547,6 +563,49 @@ async def run_agent(
                 log_event("confirm_declined", tool=name, args=args)
                 return "User declined this action."
 
+            # Web search: stream progress events to the frontend
+            if name == "web_search" and on_event is not None:
+                query = (args or {}).get("query", "")
+                call_id = uuid.uuid4().hex[:12]
+                try:
+                    await on_event({
+                        "type": "search_start",
+                        "query": query,
+                        "call_id": call_id,
+                    })
+                except Exception:
+                    pass
+
+                # If search is disabled, refuse without calling the tool
+                if not is_search_enabled():
+                    result = ("web_search is disabled by the user. "
+                              "Answer from your own knowledge, or tell the "
+                              "user to enable the search toggle.")
+                else:
+                    from tools.search import search_structured, format_results
+                    structured = await asyncio.to_thread(
+                        search_structured, query, 5
+                    )
+                    result = format_results(structured)
+                    try:
+                        await on_event({
+                            "type": "search_results",
+                            "query": query,
+                            "call_id": call_id,
+                            "backend": structured.get("backend", ""),
+                            "results": structured.get("results", [])[:5],
+                            "ok": structured.get("ok", False),
+                            "error": structured.get("error", ""),
+                        })
+                    except Exception:
+                        pass
+
+                flagged, matched = scan_injection(result)
+                if flagged:
+                    log_event("injection_detected", tool=name, matched=matched)
+                    return f"[INJECTION WARNING] content withheld ({matched})"
+                return result
+
             result = await asyncio.to_thread(call_tool, name, args)
             flagged, matched = scan_injection(result)
             if flagged:
@@ -601,6 +660,26 @@ async def run_agent(
                         "result": result[:500]})
             _note_tool_call(session_id, name, args, result)
 
+            # Loop detection: fingerprint this call. If the same tool was
+            # called with the same args 3 times in a row, abort.
+            try:
+                _fp = (name, json.dumps(args, sort_keys=True, default=str))
+            except Exception:
+                _fp = (name, str(args))
+            if _fp == _loop_fp:
+                _loop_count += 1
+            else:
+                _loop_fp = _fp
+                _loop_count = 1
+            if _loop_count >= 3:
+                log_event("tool_loop_detected", tool=name, count=_loop_count)
+                return (
+                    "I called " + name + " " + str(_loop_count) + " times "
+                    "with the same arguments and got the same result each "
+                    "time. Stopping to avoid a loop. The tool returned:\n\n"
+                    + result[:500]
+                ), log
+
             _safe_result = result.replace(
                 "<<END_UNTRUSTED_TOOL_RESULT", "<<_E_UTR_"
             ).replace(
@@ -621,9 +700,7 @@ async def run_agent(
     return "Tool-call limit reached.", log
 
 
-# ---------------------------------------------------------------------
 # Text tool-call repair for abliterated models that write calls as prose.
-# ---------------------------------------------------------------------
 
 _TEXT_CALL_RE = re.compile(
     r"^\s*(?:call\s+)?([a-z_][a-z0-9_]*)\s*\(\s*(.*?)\s*\)\s*$",
@@ -672,9 +749,7 @@ def clear_working_set(session_id: str):
     _ws_clear(session_id)
 
 
-# ---------------------------------------------------------------------
 # Strip hallucinated tool-result wrappers from the final reply.
-# ---------------------------------------------------------------------
 
 _FAKE_WRAP_RE = re.compile(
     r"<<\s*UNTRUSTED_TOOL_RESULT[^>]*>>.*?<<\s*END_UNTRUSTED_TOOL_RESULT\s*>>",
