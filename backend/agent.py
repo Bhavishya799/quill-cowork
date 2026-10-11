@@ -155,6 +155,25 @@ def filter_tools(message: str, all_tools: list) -> list:
         elif re.search(r"\b(?:search|google|look\s*up|research)\s+(?:for|about|on)\b", m):
             keep.add("web_search")
 
+    # MCP router rule: offer mcp_<server>_* tools when the user names
+    # the server (e.g. "use filesystem to read X").
+    _mcp_seen = set()
+    for t in all_tools:
+        _n = t["function"]["name"]
+        if not _n.startswith("mcp_"):
+            continue
+        _parts = _n.split("_", 2)
+        if len(_parts) < 3:
+            continue
+        _server = _parts[1]
+        if _server in _mcp_seen:
+            continue
+        if re.search(rf"\b{re.escape(_server)}\b", m):
+            _mcp_seen.add(_server)
+            for t2 in all_tools:
+                if t2["function"]["name"].startswith(f"mcp_{_server}_"):
+                    keep.add(t2["function"]["name"])
+
     # ---- Filesystem ----
     if has("list", "show", "what", "what's", "display") and has(
             "file", "files", "folder", "directory", "workspace", "root", "contents"):

@@ -79,3 +79,7 @@ update_docs.py
 restore_and_fix.py
 write_audio.py
 finalize_audio.py
+
+# MCP: local server configs with secrets
+mcp_servers.local.json
+backend/mcp_servers.local.json

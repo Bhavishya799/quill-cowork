@@ -66,6 +66,26 @@ def connector(manifest: Dict[str, Any]) -> Callable:
     return wrap
 
 
+def register_external_tool(name: str, schema: Dict[str, Any],
+                             caller, destructive: bool = True) -> None:
+    """Register a tool whose implementation lives outside this process.
+    Used for MCP tools. `caller` must accept **kwargs and return str."""
+    _tools[name] = {
+        "function": caller,
+        "destructive": destructive,
+        "schema": schema,
+        "external": True,
+    }
+
+
+def unregister_external_tools(prefix: str) -> int:
+    """Remove all tools whose name starts with prefix. Returns count."""
+    names = [n for n in _tools if n.startswith(prefix)]
+    for n in names:
+        _tools.pop(n, None)
+    return len(names)
+
+
 def get_ollama_tools() -> List[Dict[str, Any]]:
     return [t["schema"] for t in _tools.values()]
 

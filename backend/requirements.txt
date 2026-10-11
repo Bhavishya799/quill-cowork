@@ -11,3 +11,4 @@ faster-whisper>=1.0.3
 numpy>=1.26
 pyttsx3>=2.90
 trafilatura>=1.9.0
+mcp>=2.0.0

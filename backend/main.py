@@ -31,6 +31,7 @@ import auth
 import oauth
 import grants as grants_mod
 import chat_store
+import mcp_client
 
 
 SESSIONS: "OrderedDict[str, list]" = OrderedDict()
@@ -153,14 +154,34 @@ def _print_search_status():
     print("search: " + " ".join(parts))
 
 
+def _register_mcp_tools():
+    """Pull MCP tool schemas into the local registry."""
+    from tools.registry import register_external_tool
+    schemas = mcp_client.mcp.get_schemas()
+    for schema in schemas:
+        name = schema["function"]["name"]
+        destructive = mcp_client.mcp.get_destructive(name)
+        def _caller(_name=name, **kw):
+            return mcp_client.mcp.call_tool_sync(_name, kw)
+        register_external_tool(
+            name, schema, _caller, destructive=destructive
+        )
+    return len(schemas)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _load_selection()
+    mcp_client.start()
+    n_mcp = _register_mcp_tools()
+    if n_mcp:
+        print(f"mcp: {n_mcp} tools registered")
     print(f"quill: {len(list_tools())} tools, {len(get_connectors())} connectors")
     print(f"auth: {'enabled' if auth.is_enabled() else 'disabled (no password set)'}")
     _print_search_status()
     yield
     monitor.stop()
+    mcp_client.stop()
 
 
 app = FastAPI(title="Quill-Cowork", version="0.3.0", lifespan=lifespan)
@@ -435,6 +456,22 @@ async def search_toggle(req: SearchToggleRequest):
     from agent import set_search_enabled
     set_search_enabled(req.enabled)
     return {"ok": True, "enabled": req.enabled}
+
+
+@app.get("/mcp/status")
+async def mcp_status():
+    return mcp_client.status()
+
+
+@app.post("/mcp/reload")
+async def mcp_reload():
+    """Restart the MCP manager with the current config file."""
+    from tools.registry import unregister_external_tools
+    unregister_external_tools("mcp_")
+    mcp_client.stop()
+    mcp_client.start()
+    n = _register_mcp_tools()
+    return {"ok": True, "tools": n}
 
 
 @app.get("/tools")
