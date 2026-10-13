@@ -66,16 +66,27 @@ def connector(manifest: Dict[str, Any]) -> Callable:
     return wrap
 
 
+_mcp_server_for_tool: Dict[str, str] = {}
+
+
 def register_external_tool(name: str, schema: Dict[str, Any],
-                             caller, destructive: bool = True) -> None:
-    """Register a tool whose implementation lives outside this process.
-    Used for MCP tools. `caller` must accept **kwargs and return str."""
+                           caller, destructive: bool = True,
+                           mcp_server: str = "") -> None:
+    """Register a tool whose implementation lives outside this process."""
     _tools[name] = {
         "function": caller,
         "destructive": destructive,
         "schema": schema,
         "external": True,
     }
+    if mcp_server:
+        _mcp_server_for_tool[name] = mcp_server
+
+
+def mcp_server_for(name: str) -> str:
+    """Return the MCP server name for an mcp_* tool, or "" if unknown.
+    Handles server names containing underscores correctly."""
+    return _mcp_server_for_tool.get(name, "")
 
 
 def unregister_external_tools(prefix: str) -> int:
@@ -106,6 +117,22 @@ def list_tools() -> List[str]:
 
 def get_connectors() -> List[Dict[str, Any]]:
     return list(_connectors.values())
+
+
+def call_tool_result(name: str, arguments: Dict[str, Any]):
+    """Structured version of call_tool. Returns ToolResult."""
+    from tool_result import succeeded, failed
+    if name not in _tools:
+        return failed(f"unknown tool: {name}")
+    try:
+        result = _tools[name]["function"](**(arguments or {}))
+        if isinstance(result, (dict, list)):
+            text = json.dumps(result, default=str)[:4000]
+        else:
+            text = str(result)[:4000]
+        return succeeded(text)
+    except Exception as e:
+        return failed(f"tool error: {type(e).__name__}: {e}")
 
 
 def call_tool(name: str, arguments: Dict[str, Any]) -> str:

@@ -163,8 +163,10 @@ def _register_mcp_tools():
         destructive = mcp_client.mcp.get_destructive(name)
         def _caller(_name=name, **kw):
             return mcp_client.mcp.call_tool_sync(_name, kw)
+        mcp_server = mcp_client.mcp.get_server_for(name)
         register_external_tool(
-            name, schema, _caller, destructive=destructive
+            name, schema, _caller, destructive=destructive,
+            mcp_server=mcp_server,
         )
     return len(schemas)
 
@@ -172,7 +174,7 @@ def _register_mcp_tools():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _load_selection()
-    mcp_client.start()
+    # mcp_client.start()
     n_mcp = _register_mcp_tools()
     if n_mcp:
         print(f"mcp: {n_mcp} tools registered")
@@ -469,7 +471,7 @@ async def mcp_reload():
     from tools.registry import unregister_external_tools
     unregister_external_tools("mcp_")
     mcp_client.stop()
-    mcp_client.start()
+    # mcp_client.start()
     n = _register_mcp_tools()
     return {"ok": True, "tools": n}
 

@@ -12,8 +12,13 @@ class OllamaProvider(BaseProvider):
 
     def __init__(self):
         self.default_model = os.getenv("OLLAMA_MODEL", "quill")
+        try:
+            self.timeout = float(os.getenv("OLLAMA_TIMEOUT", "120"))
+        except ValueError:
+            self.timeout = 120.0
         self.client = ollama.Client(
-            host=os.getenv("OLLAMA_HOST", "http://localhost:11434")
+            host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+            timeout=self.timeout,
         )
 
     def chat(self, messages, tools=None, model=None):

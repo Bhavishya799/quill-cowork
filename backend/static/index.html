@@ -213,7 +213,157 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
   .composer-wrap{padding:8px 16px 16px}
   .profile-modal{width:100vw;max-width:100vw;border-radius:0;max-height:100vh;height:100vh}
 }
+
+/* =========================================================
+   Dark theme (black + yellow)
+   ========================================================= */
+:root[data-theme="dark"]{
+  --paper:#0D0C09;
+  --sidebar:#14120E;
+  --border:#2A2519;
+  --border-2:#221E15;
+  --border-3:#332D20;
+  --border-4:#2F2A1D;
+  --ink:#F0E9CE;
+  --ink-2:#BDB595;
+  --ink-3:#9C9480;
+  --ink-4:#807A6A;
+  --ink-5:#65604F;
+  --ink-6:#4E4A3E;
+  --link:#F5C842;
+  --warn:#F5B800;
+  --ok:#B8D86B;
+  --err:#E86A5A;
+  --card:#1A1712;
+  --card-2:#1F1B14;
+  --card-3:#262116;
+  --chip:#2A2519;
+  --hover:#2E2818;
+}
+:root[data-theme="dark"] body{background:var(--paper);color:var(--ink)}
+:root[data-theme="dark"] .sb-logo{background:#F5C842}
+:root[data-theme="dark"] .sb-logo svg{stroke:#0D0C09}
+:root[data-theme="dark"] .btn-new,
+:root[data-theme="dark"] .composer,
+:root[data-theme="dark"] .perm-card,
+:root[data-theme="dark"] .model-dropdown,
+:root[data-theme="dark"] .profile-modal{
+  background:var(--card);border-color:var(--border-3);
+}
+:root[data-theme="dark"] .sb-search{background:#1E1A12}
+:root[data-theme="dark"] .msg-user-bubble{background:#221E15;color:var(--ink)}
+:root[data-theme="dark"] .chat-row.active{background:#2A2519}
+:root[data-theme="dark"] .msg-user-file,
+:root[data-theme="dark"] .attachment,
+:root[data-theme="dark"] .perm-target,
+:root[data-theme="dark"] .step-target{background:var(--chip);border-color:var(--border-3)}
+:root[data-theme="dark"] .composer-send{background:#F5C842}
+:root[data-theme="dark"] .composer-send svg{stroke:#0D0C09}
+:root[data-theme="dark"] .composer-send:hover{background:#E0B53A}
+:root[data-theme="dark"] .composer-send[disabled]{background:#3A342A}
+:root[data-theme="dark"] .composer-btn,
+:root[data-theme="dark"] .perm-btn,
+:root[data-theme="dark"] .profile-btn{
+  background:var(--card);border-color:var(--border-3);color:var(--ink-2);
+}
+:root[data-theme="dark"] .composer-btn:hover,
+:root[data-theme="dark"] .perm-btn:hover,
+:root[data-theme="dark"] .profile-btn:hover{background:var(--hover);color:var(--ink)}
+:root[data-theme="dark"] .perm-btn.primary,
+:root[data-theme="dark"] .profile-btn.primary{
+  background:#F5C842;color:#0D0C09;border-color:#F5C842;
+}
+:root[data-theme="dark"] .perm-btn.primary:hover,
+:root[data-theme="dark"] .profile-btn.primary:hover{background:#E0B53A}
+:root[data-theme="dark"] a{color:var(--link)}
+:root[data-theme="dark"] .blk-code{background:#16130E;color:#F0E9CE}
+:root[data-theme="dark"] .search-card{background:#1A1712;border-color:#332D20}
+:root[data-theme="dark"] .search-head:hover{background:#221E15}
+:root[data-theme="dark"] .search-body{background:#1F1B14;border-color:#2A2519}
+:root[data-theme="dark"] .search-src-title{color:#F5C842}
+:root[data-theme="dark"] .search-src-snippet{color:#BDB595}
+:root[data-theme="dark"] .search-src-domain{color:#807A6A}
+:root[data-theme="dark"] .search-favicon{background:#2A2519;color:#BDB595}
+:root[data-theme="dark"] .search-source{border-color:#221E15}
+:root[data-theme="dark"] .search-q{color:#F0E9CE}
+:root[data-theme="dark"] .search-count{color:#807A6A}
+:root[data-theme="dark"] .search-check{background:#F5C842}
+:root[data-theme="dark"] .search-check svg{stroke:#0D0C09}
+:root[data-theme="dark"] .perm-dot{background:#F5C842}
+:root[data-theme="dark"] .conn-badge{background:var(--card);border-color:var(--border-3);color:var(--ink-2)}
+:root[data-theme="dark"] .conn-toggle.off{background:#3A342A}
+:root[data-theme="dark"] .conn-toggle.on{background:#F5C842}
+:root[data-theme="dark"] .conn-toggle.on .knob{background:#0D0C09}
+:root[data-theme="dark"] .sb-avatar{background:#F5C842;color:#0D0C09}
+:root[data-theme="dark"] .mic-live{color:var(--ink-2)}
+:root[data-theme="dark"] .model-item.selected{background:#221E15}
+:root[data-theme="dark"] .model-item:hover{background:#1E1A12}
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] textarea{color:var(--ink)}
+:root[data-theme="dark"] .profile-row input{background:var(--card);border-color:var(--border-3)}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb{background:#3A342A}
+:root[data-theme="dark"] .main-header{border-color:var(--border-2)}
+:root[data-theme="dark"] .sb-brand{border-color:var(--border)}
+
+/* =========================================================
+   Search dock (fixed panel, no scroll drift)
+   ========================================================= */
+#search-dock{
+  position:absolute;
+  top:64px;
+  right:20px;
+  width:380px;
+  max-height:calc(100vh - 240px);
+  overflow-y:auto;
+  overflow-x:hidden;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  z-index:20;
+  pointer-events:none;
+  scrollbar-width:thin;
+}
+#search-dock > *{pointer-events:auto}
+main{position:relative}
+@media (max-width: 1000px){
+  #search-dock{
+    position:static;
+    width:auto;
+    margin:8px 16px;
+    max-height:none;
+  }
+}
+
+/* =========================================================
+   Chat rename UI
+   ========================================================= */
+.chat-rename{
+  width:20px;height:20px;flex:none;border:none;background:transparent;
+  border-radius:4px;color:var(--ink-4);display:none;align-items:center;
+  justify-content:center;padding:0;transition:background .12s,color .12s;
+}
+.chat-row:hover .chat-rename,
+.chat-row.active .chat-rename{display:flex}
+.chat-rename:hover{background:#FFFFFF;color:var(--ink)}
+:root[data-theme="dark"] .chat-rename:hover{background:var(--hover)}
+.chat-rename svg{width:11px;height:11px}
+.chat-row-input{
+  flex:1;min-width:0;border:1px solid var(--border-3);border-radius:6px;
+  background:#FFFFFF;font:400 13.5px Geist,sans-serif;color:var(--ink);
+  padding:3px 6px;outline:none;
+}
+.chat-row-input:focus{border-color:#F5C842}
+:root[data-theme="dark"] .chat-row-input{background:var(--card);color:var(--ink)}
+
+/* =========================================================
+   Theme toggle button
+   ========================================================= */
+#btn-theme svg{width:15px;height:15px}
+:root[data-theme="dark"] #btn-theme{color:#F5C842;border-color:#4A3F1A}
+:root[data-theme="dark"] #btn-theme:hover{background:#2A2519}
+
 </style>
+<script>(function(){try{var t=localStorage.getItem("quill.theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
 </head>
 <body>
 <div id="app">
@@ -279,6 +429,7 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
       <span class="main-model" id="main-model">Quill</span>
     </header>
 
+    <div id="search-dock"></div>
     <div id="stream">
       <div class="stream-inner" id="stream-inner"></div>
     </div>
@@ -299,6 +450,9 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
           <button class="composer-btn wide" id="btn-mode" title="Permission mode">
             <span id="mode-dot" style="width:7px;height:7px;border-radius:50%;background:#4F7A5A;display:inline-block"></span>
             <span id="mode-label">Ask first</span>
+          </button>
+          <button class="composer-btn" id="btn-theme" title="Toggle dark mode">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
           </button>
           <span class="composer-status">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 7V3M15 7V3M7 7h10v5a5 5 0 0 1-10 0V7zM12 17v4"></path></svg>
@@ -473,6 +627,11 @@ function scheduleReconnect(){
   wsReconnect = setTimeout(function(){ wsReconnect = null; connectWS(); }, 2500);
 }
 function handleServerMessage(data){
+  if (data && (data.type === 'search_start' || data.type === 'search_results')) {
+    try { document.dispatchEvent(new CustomEvent('quill:search', { detail: data })); }
+    catch(e){}
+    return;
+  }
   const chatId = state.runChat;
   if (chatId == null) return;
   if (data.type === 'thinking'){
@@ -518,10 +677,25 @@ function handleServerMessage(data){
         }
       }
     } else {
+      const FAIL_LABELS = {
+        failed: 'Failed',
+        denied: 'Denied',
+        rate_limited: 'Rate limited',
+        disabled: 'Disabled',
+        pending: 'Pending'
+      };
       calls.forEach(function(c){
+        const ok = c.ok !== false;
+        const status = c.status || (ok ? 'succeeded' : 'failed');
+        const label = ok
+          ? (DONE[c.tool] || 'Ran') + ' · ' + c.tool
+          : (FAIL_LABELS[status] || 'Failed') + ' · ' + c.tool;
         pushMsg(chatId, {
-          role: 'step', ok: true,
-          label: (DONE[c.tool] || 'Ran') + ' · ' + c.tool,
+          role: 'step',
+          ok: ok,
+          bad: !ok,
+          status: status,
+          label: label,
           target: humanArgs(c.arguments)
         });
       });
@@ -788,6 +962,65 @@ function deleteChat(id){
   renderComposerState();
 }
 
+/* ---------- Chat rename ---------- */
+function startRename(chatId){
+  const row = document.querySelector('[data-chat="' + chatId + '"]');
+  if (!row) return;
+  const span = row.querySelector('[data-chat-title]');
+  if (!span) return;
+  const chat = state.chats.find(function(c){ return c.id === chatId; });
+  if (!chat) return;
+
+  const input = document.createElement('input');
+  input.className = 'chat-row-input';
+  input.value = chat.title || 'New task';
+  input.maxLength = 80;
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+
+  function commit(){
+    if (done) return;
+    done = true;
+    const newTitle = (input.value || '').trim() || 'New task';
+    chat.title = newTitle;
+    const newSpan = document.createElement('span');
+    newSpan.className = 'chat-row-title';
+    newSpan.setAttribute('data-chat-title', chatId);
+    newSpan.textContent = newTitle;
+    if (input.parentNode) input.replaceWith(newSpan);
+    try {
+      fetch('/chats/' + encodeURIComponent(chatId), {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ title: newTitle })
+      }).catch(function(){});
+    } catch(e){}
+    renderHeader();
+    renderChatList();
+  }
+
+  function cancel(){
+    if (done) return;
+    done = true;
+    const newSpan = document.createElement('span');
+    newSpan.className = 'chat-row-title';
+    newSpan.setAttribute('data-chat-title', chatId);
+    newSpan.textContent = chat.title || 'New task';
+    if (input.parentNode) input.replaceWith(newSpan);
+    renderChatList();
+  }
+
+  input.addEventListener('keydown', function(e){
+    if (e.key === 'Enter'){ e.preventDefault(); commit(); }
+    else if (e.key === 'Escape'){ e.preventDefault(); cancel(); }
+  });
+  input.addEventListener('blur', function(){ commit(); });
+  input.addEventListener('click', function(e){ e.stopPropagation(); });
+}
+
 /* ---------- Rendering ---------- */
 function blocksHtml(text){
   const out = [];
@@ -919,7 +1152,10 @@ function renderChatList(){
     const running = (!isIdle() && state.runChat === c.id)
       ? '<span class="chat-row-running"></span>' : '';
     return '<div class="chat-row' + active + '" data-chat="' + c.id + '">' +
-      '<span class="chat-row-title">' + esc(c.title) + '</span>' + running +
+      '<span class="chat-row-title" data-chat-title="' + c.id + '">' + esc(c.title) + '</span>' + running +
+      '<button class="chat-rename" data-chat-rename="' + c.id + '" title="Rename chat">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>' +
+      '</button>' +
       '<button class="chat-delete" data-chat-delete="' + c.id + '" title="Delete chat">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>' +
       '</button>' +
@@ -1189,6 +1425,11 @@ document.addEventListener('click', function(e){
     return;
   }
 
+  const renChat = closest('[data-chat-rename]');
+  if (renChat){
+    startRename(renChat.getAttribute('data-chat-rename'));
+    return;
+  }
   const delChat = closest('[data-chat-delete]');
   if (delChat){
     deleteChat(delChat.getAttribute('data-chat-delete'));
@@ -1335,8 +1576,43 @@ document.addEventListener('keydown', function(e){
   }
 });
 
+/* ---------- Theme ---------- */
+const THEME_KEY = 'quill.theme';
+
+function applyTheme(theme){
+  const root = document.documentElement;
+  if (theme === 'dark'){
+    root.setAttribute('data-theme', 'dark');
+  } else {
+    root.removeAttribute('data-theme');
+  }
+  try { localStorage.setItem(THEME_KEY, theme); } catch(e){}
+  const btn = document.getElementById('btn-theme');
+  if (btn){
+    btn.title = theme === 'dark' ? 'Switch to light' : 'Switch to dark';
+  }
+}
+
+function toggleTheme(){
+  const cur = document.documentElement.getAttribute('data-theme') === 'dark'
+    ? 'dark' : 'light';
+  applyTheme(cur === 'dark' ? 'light' : 'dark');
+}
+
+function initTheme(){
+  let saved = 'light';
+  try { saved = localStorage.getItem(THEME_KEY) || 'light'; } catch(e){}
+  applyTheme(saved);
+  const btn = document.getElementById('btn-theme');
+  if (btn && !btn._wired){
+    btn._wired = true;
+    btn.addEventListener('click', toggleTheme);
+  }
+}
+
 /* ---------- Boot ---------- */
 loadProfile();
+initTheme();
 renderChatList();
 renderStream();
 renderHeader();

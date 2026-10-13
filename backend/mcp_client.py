@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import threading
 import time
 from contextlib import AsyncExitStack
@@ -45,7 +46,6 @@ def _resolve_env_value(value: str) -> str:
     return re.sub(r"\$\{([A-Z_][A-Z0-9_]*)\}", sub, value)
 
 
-import re  # noqa: E402  (used by _resolve_env_value)
 
 
 def _load_config() -> dict:
@@ -134,6 +134,12 @@ class MCPManager:
 
     def get_destructive(self, prefixed_name: str) -> bool:
         return self._destructive.get(prefixed_name, True)
+
+    def get_server_for(self, prefixed_name: str) -> str:
+        """Return the server name for a given mcp_<server>_<tool> tool."""
+        entry = self._tool_map.get(prefixed_name)
+        return entry[0] if entry else ""
+
 
     def call_tool_sync(self, prefixed_name: str, args: dict) -> str:
         entry = self._tool_map.get(prefixed_name)
@@ -230,9 +236,6 @@ class MCPManager:
 
     async def _connect_one(self, name, spec, Client, StdioServerParameters,
                            stdio_client):
-        trust = bool(spec.get("trust", False))
-        destructive = not trust
-
         # HTTP/SSE transport
         url = spec.get("url")
         if url:
