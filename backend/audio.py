@@ -152,42 +152,51 @@ async def transcribe_pcm_async(pcm_i16: np.ndarray,
 
 
 class StreamSession:
-    """Accumulate PCM chunks; emit partials while the user speaks."""
+    """Chunk-and-commit streaming session.
+
+    Committed text lives outside the audio window. Each pass transcribes
+    only the uncommitted window; stable segments are promoted and their
+    audio dropped. A small overlap (default 0.8s) stays at the window
+    start so Whisper has context and words aren't cut mid-syllable.
+    The seam is deduped word-wise against committed text.
+    """
 
     def __init__(self, sample_rate: int,
                  partial_interval: float = 1.2,
                  min_audio_for_partial: float = 0.8,
-                 max_buffer_seconds: float = 45.0):
+                 overlap_seconds: float = 0.8,
+                 commit_after_seconds: float = 8.0):
         self.sample_rate = int(sample_rate) if sample_rate > 0 else 16000
         self.partial_interval = partial_interval
         self.min_audio_for_partial = min_audio_for_partial
-        self.max_buffer_seconds = max_buffer_seconds
-        self._chunks: list = []
-        self._total = 0
+        self.overlap_samples = int(overlap_seconds * self.sample_rate)
+        self.commit_after_samples = int(commit_after_seconds * self.sample_rate)
+
+        self.committed_text = ""
+        self._active = np.zeros(0, dtype=np.int16)
+        # Samples at the start of _active that are already committed
+        # (the overlap region re-fed for context).
+        self._overlap_in_active = 0
         self._last_partial_at = 0.0
         self._last_partial_text = ""
+        self._debug = os.getenv("QUILL_AUDIO_DEBUG", "0") == "1"
+
+    # --- input -------------------------------------------------------
 
     def add(self, pcm_i16: np.ndarray) -> None:
         if pcm_i16 is None or len(pcm_i16) == 0:
             return
-        self._chunks.append(pcm_i16)
-        self._total += len(pcm_i16)
-        cap = int(self.max_buffer_seconds * self.sample_rate)
-        if self._total > cap:
-            joined = self._joined()[self._total - cap:]
-            self._chunks = [joined]
-            self._total = len(joined)
+        pcm_i16 = pcm_i16.astype(np.int16, copy=False)
+        if self._active.size == 0:
+            self._active = pcm_i16.copy()
+        else:
+            self._active = np.concatenate([self._active, pcm_i16])
 
-    def _joined(self) -> np.ndarray:
-        if not self._chunks:
-            return np.zeros(0, dtype=np.int16)
-        if len(self._chunks) == 1:
-            return self._chunks[0]
-        return np.concatenate(self._chunks)
+    # --- state -------------------------------------------------------
 
     @property
     def duration(self) -> float:
-        return self._total / float(self.sample_rate)
+        return len(self._active) / float(self.sample_rate)
 
     def should_emit_partial(self) -> bool:
         now = time.monotonic()
@@ -197,18 +206,124 @@ class StreamSession:
             return False
         return True
 
+    # --- transcribe --------------------------------------------------
+
     async def partial(self) -> str:
-        pcm = self._joined()
+        if len(self._active) == 0:
+            return self.committed_text
         self._last_partial_at = time.monotonic()
-        t = await transcribe_pcm_async(pcm, self.sample_rate)
-        text = t.text.strip()
-        if text:
-            self._last_partial_text = text
-        return text
+        t = await transcribe_pcm_async(self._active, self.sample_rate)
+        return self._compose(t)
+
+    async def commit_if_ready(self) -> bool:
+        """If the active window has grown past commit_after_seconds,
+        transcribe it, promote the stable prefix to committed_text,
+        drop that audio, keep overlap. Returns True if anything was
+        committed."""
+        if len(self._active) < self.commit_after_samples:
+            return False
+
+        t = await transcribe_pcm_async(self._active, self.sample_rate)
+        if not t.segments:
+            return False
+
+        duration_samples = len(self._active)
+        cutoff_samples = duration_samples - self.overlap_samples
+        overlap_sec = self._overlap_in_active / float(self.sample_rate)
+
+        commit_texts = []
+        commit_until_samples = self._overlap_in_active
+
+        for seg in t.segments:
+            # Segments fully inside the already-committed overlap: skip.
+            if seg.end <= overlap_sec:
+                continue
+            seg_end_samples = int(seg.end * self.sample_rate)
+            # Segments that extend into the live edge: stop.
+            if seg_end_samples > cutoff_samples:
+                break
+            text = (seg.text or "").strip()
+            if text:
+                commit_texts.append(text)
+            commit_until_samples = seg_end_samples
+
+        if not commit_texts:
+            return False
+
+        new_text = " ".join(commit_texts).strip()
+        if not new_text:
+            return False
+
+        self.committed_text = (self.committed_text + " " + new_text).strip()
+
+        # Drop committed audio, keep overlap at the front.
+        drop_until = max(0, commit_until_samples - self.overlap_samples)
+        self._active = self._active[drop_until:]
+        self._overlap_in_active = commit_until_samples - drop_until
+        self._last_partial_text = self.committed_text
+
+        if self._debug:
+            print(
+                f"[audio] commit: +{len(new_text)} chars, "
+                f"drop {drop_until} samples, "
+                f"active now {len(self._active)} samples "
+                f"({len(self._active) / self.sample_rate:.2f}s)",
+                flush=True,
+            )
+        return True
 
     async def finalize(self) -> Transcript:
-        pcm = self._joined()
-        return await transcribe_pcm_async(pcm, self.sample_rate)
+        if len(self._active) == 0:
+            return Transcript(text=self.committed_text, duration=0.0)
+        t = await transcribe_pcm_async(self._active, self.sample_rate)
+        final_text = self._compose(t)
+        return Transcript(
+            text=final_text,
+            language=t.language,
+            duration=len(self._active) / float(self.sample_rate),
+            segments=t.segments,
+        )
+
+    # --- internals ---------------------------------------------------
+
+    def _compose(self, t: Transcript) -> str:
+        """Committed text + the new portion of t, seam-deduped."""
+        overlap_sec = self._overlap_in_active / float(self.sample_rate)
+        new_parts = []
+        for seg in t.segments:
+            if seg.end <= overlap_sec:
+                continue
+            text = (seg.text or "").strip()
+            if text:
+                new_parts.append(text)
+
+        raw_new = " ".join(new_parts).strip()
+        if not raw_new:
+            # Whisper returned no segments (or only overlap): fall back
+            # to the whole text and dedupe against committed tail.
+            raw_new = (t.text or "").strip()
+
+        raw_new = _dedupe_tail_head(self.committed_text, raw_new)
+        if not raw_new:
+            return self.committed_text
+        if not self.committed_text:
+            return raw_new
+        return (self.committed_text + " " + raw_new).strip()
+
+
+def _dedupe_tail_head(committed: str, new_text: str,
+                      max_words: int = 8) -> str:
+    """If the tail of `committed` matches the head of `new_text`, drop
+    the duplicate from `new_text`. Word-level, case-sensitive."""
+    if not committed or not new_text:
+        return new_text
+    c_words = committed.split()
+    n_words = new_text.split()
+    limit = min(max_words, len(c_words), len(n_words))
+    for k in range(limit, 1, -1):
+        if c_words[-k:] == n_words[:k]:
+            return " ".join(n_words[k:])
+    return new_text
 
 
 def synthesize_wav(text: str, rate: int = 180) -> bytes:

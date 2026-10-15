@@ -891,6 +891,11 @@ async def ws_audio_endpoint(ws: WebSocket):
             await asyncio.sleep(0.25)
             if session is None:
                 continue
+            # Commit stable segments before the next partial.
+            try:
+                await session.commit_if_ready()
+            except Exception:
+                pass
             if not session.should_emit_partial():
                 continue
             async with lock:
