@@ -585,6 +585,17 @@ async def run_agent(
     if ws:
         system_content += "\n\n" + ws
 
+    # Semantic memory: recall relevant past turns
+    try:
+        import memory as _mem
+        _mem_block = _mem.format_for_prompt(
+            user_message, session_id=session_id
+        )
+        if _mem_block:
+            system_content += "\n\n" + _mem_block
+    except Exception:
+        pass
+
     messages: List[Dict[str, Any]] = [
         {"role": "system", "content": system_content},
         *history,

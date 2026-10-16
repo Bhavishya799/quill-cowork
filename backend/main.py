@@ -31,6 +31,7 @@ import auth
 import oauth
 import grants as grants_mod
 import chat_store
+import memory
 import mcp_client
 
 
@@ -474,6 +475,28 @@ async def mcp_reload():
     # mcp_client.start()
     n = _register_mcp_tools()
     return {"ok": True, "tools": n}
+
+
+@app.get("/memory/status")
+async def memory_status():
+    return memory.status()
+
+
+@app.post("/memory/clear")
+async def memory_clear():
+    return {"removed": memory.clear()}
+
+
+class MemoryRememberRequest(BaseModel):
+    chat_id: str = "manual"
+    role: str = "user"
+    text: str
+
+
+@app.post("/memory/remember")
+async def memory_remember(req: MemoryRememberRequest):
+    ok = memory.remember(req.chat_id, req.role, req.text)
+    return {"ok": ok}
 
 
 @app.get("/tools")
@@ -1174,6 +1197,16 @@ async def websocket_endpoint(ws: WebSocket):
         history.append({"role": "user", "content": msg})
         history.append({"role": "assistant", "content": reply})
         _session_put(sid, history[-HISTORY_MAX:])
+
+        # Semantic memory: store this turn in the background
+        try:
+            await asyncio.to_thread(memory.remember, sid, "user", msg)
+            if reply and 10 < len(reply) < 600:
+                await asyncio.to_thread(
+                    memory.remember, sid, "assistant", reply
+                )
+        except Exception:
+            pass
 
         await ws.send_json({
             "type": "reply",

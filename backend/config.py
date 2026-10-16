@@ -21,6 +21,10 @@ class Settings:
     PORT = int(os.getenv("PORT", "8000"))
     MAX_TOOL_ITERATIONS = int(os.getenv("MAX_TOOL_ITERATIONS", "20"))
     MAX_PARALLEL_TOOLS = int(os.getenv("MAX_PARALLEL_TOOLS", "4"))
+    MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "1")
+    MEMORY_MODEL = os.getenv("MEMORY_MODEL", "nomic-embed-text")
+    MEMORY_TOP_K = int(os.getenv("MEMORY_TOP_K", "5"))
+    MEMORY_MIN_SIM = float(os.getenv("MEMORY_MIN_SIM", "0.45"))
     WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")
     TTS_RATE = int(os.getenv("TTS_RATE", "180"))
 
