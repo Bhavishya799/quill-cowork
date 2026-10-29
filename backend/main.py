@@ -139,20 +139,13 @@ class CodebaseDisconnectRequest(BaseModel):
 
 def _print_search_status():
     import os as _os
-    sx = (_os.getenv("SEARXNG_URL", "") or "").strip()
-    tv = (_os.getenv("TAVILY_API_KEY", "") or "").strip()
-    if not sx and not tv:
-        print("search: DISABLED "
-              "(set TAVILY_API_KEY or SEARXNG_URL in backend/.env)")
-        return
-    parts = []
-    if sx:
-        parts.append(f"searxng={sx}")
-    if tv:
-        parts.append("tavily=configured")
-    else:
-        parts.append("tavily=empty")
-    print("search: " + " ".join(parts))
+    try:
+        import websift  # noqa: F401
+        ddg = "available"
+    except ImportError:
+        ddg = "missing (pip install websift)"
+    tv = "configured" if (_os.getenv("TAVILY_API_KEY", "") or "").strip() else "empty"
+    print(f"search: duckduckgo={ddg} tavily={tv}")
 
 
 def _register_mcp_tools():
@@ -442,10 +435,18 @@ async def search_status():
     from agent import is_search_enabled
     from tools.search import is_configured
     import os as _os
+    try:
+        import websift  # noqa: F401
+        ddg = True
+    except ImportError:
+        ddg = False
+    from tools.search import health_detail
+    hd = health_detail()
     return {
         "enabled": is_search_enabled(),
-        "configured": is_configured(),
-        "searxng": (_os.getenv("SEARXNG_URL", "") or "").strip(),
+        "configured": hd["configured"],
+        "hint": hd["hint"],
+        "duckduckgo": ddg,
         "tavily": bool((_os.getenv("TAVILY_API_KEY", "") or "").strip()),
     }
 
@@ -1275,6 +1276,128 @@ def _inject_pending_archive(message: str, sid: str) -> str:
     PENDING_ARCHIVE.pop(sid, None)
     return f"{text} (path: {pending})"
 
+
+
+# ============ Critical-fix endpoints ============
+
+@app.get("/audit/verify")
+async def audit_verify_endpoint():
+    from audit import verify as audit_verify
+    return audit_verify()
+
+
+@app.get("/checkpoints/{session_id}")
+async def checkpoints_list(session_id: str, limit: int = 50):
+    import checkpoints as cp
+    return {"checkpoints": cp.list_for_chat(session_id, limit)}
+
+
+class RewindRequest(BaseModel):
+    checkpoint_id: int
+
+
+@app.post("/checkpoints/rewind")
+async def checkpoints_rewind(req: RewindRequest):
+    import checkpoints as cp
+    return cp.rewind(req.checkpoint_id)
+
+
+@app.get("/skills")
+async def skills_list():
+    import skills_guard
+    return skills_guard.list_skills()
+
+
+class SkillInstallRequest(BaseModel):
+    source_path: str
+    name: str
+
+
+@app.post("/skills/install")
+async def skills_install(req: SkillInstallRequest):
+    import skills_guard
+    from pathlib import Path as _P
+    return skills_guard.install_skill(_P(req.source_path), req.name)
+
+
+@app.get("/sandbox/status")
+async def sandbox_status():
+    import sandbox
+    return sandbox.status()
+
+
+class AutoApproveRequest(BaseModel):
+    max_risk: int
+
+
+@app.post("/security/auto-approve")
+async def set_auto_approve(req: AutoApproveRequest):
+    settings.AUTO_APPROVE_MAX_RISK = max(0, min(3, int(req.max_risk)))
+    return {"ok": True, "max_risk": settings.AUTO_APPROVE_MAX_RISK}
+
+
+# ============ End critical-fix endpoints ============
+
+
+# ============ Context compaction ============
+
+@app.get("/context/usage")
+async def context_usage_endpoint(session_id: str = "default"):
+    from compaction import usage as _usage
+    hist = _session_get(session_id)
+    return _usage(hist)
+
+
+@app.post("/context/compact")
+async def context_compact_endpoint(session_id: str = "default"):
+    from compaction import compact as _compact, usage as _usage
+    hist = _session_get(session_id)
+    if not hist or len(hist) < 5:
+        return {"ok": False, "error": "history too short to compact"}
+    model = _current_model()
+    provider = get_provider()
+    new_hist, summary, did = await asyncio.to_thread(
+        _compact, hist, provider, model
+    )
+    if not did:
+        return {"ok": False, "error": "compaction skipped (nothing to cut)"}
+    _session_put(session_id, new_hist[-HISTORY_MAX:])
+    from audit import log_event
+    log_event("context_compacted_manual", session_id=session_id,
+              before=len(hist), after=len(new_hist))
+    return {
+        "ok": True,
+        "summary": summary or {},
+        "usage": _usage(new_hist),
+        "messages_before": len(hist),
+        "messages_after": len(new_hist),
+    }
+
+
+# ============ End context compaction ============
+
+
+# ============ Phone notifications (ntfy) ============
+
+@app.get("/notify/status")
+async def notify_status():
+    from tools.notify import is_configured, _base, _topic
+    return {
+        "configured": is_configured(),
+        "url": _base(),
+        "topic": _topic(),
+    }
+
+
+@app.post("/notify/test")
+async def notify_test():
+    from tools.notify import send_notification
+    return {"result": send_notification(
+        "Quill notifications are working.", title="Quill test"
+    )}
+
+
+# ============ End phone notifications ============
 
 if __name__ == "__main__":
     import uvicorn

@@ -42,6 +42,17 @@ def _regex_extract(html: str, max_chars: int) -> str:
     return text[:max_chars]
 
 
+def _fix_mojibake(text: str) -> str:
+    """Repair common CP1252-as-UTF-8 mojibake. Safe: returns input unchanged
+    if it does not detect mangled UTF-8 markers."""
+    if not text or not any(m in text for m in ("â€", "â€", "Ã¢", "Ã©", "Ã¢â‚¬")):
+        return text
+    try:
+        return text.encode("cp1252", errors="ignore").decode("utf-8", errors="ignore")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return text
+
+
 def _extract_text(html: str, max_chars: int) -> str:
     """Try trafilatura, fall back to the regex. Never raises."""
     if _HAVE_TRAFILATURA and _tra_extract is not None:
@@ -57,7 +68,7 @@ def _extract_text(html: str, max_chars: int) -> str:
                 return text[:max_chars]
         except Exception:
             pass
-    return _regex_extract(html, max_chars)
+    return _fix_mojibake(_regex_extract(html, max_chars))
 
 
 @tool

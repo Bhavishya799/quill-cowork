@@ -8,5 +8,6 @@ class BaseProvider(ABC):
     @abstractmethod
     def chat(self, messages: List[Dict[str, Any]],
              tools: Optional[List[Dict[str, Any]]] = None,
-             model: Optional[str] = None) -> Dict[str, Any]:
+             model: Optional[str] = None,
+             format: Optional[Any] = None) -> Dict[str, Any]:
         raise NotImplementedError

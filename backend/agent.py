@@ -18,7 +18,88 @@ from audit import log_event
 from tools import load_all_tools
 load_all_tools()
 
-from tools.registry import get_ollama_tools, call_tool, is_destructive
+from compaction import (
+    should_compact as _ctx_should_compact,
+    compact as _ctx_compact,
+    estimate_tokens as _ctx_estimate,
+    usage as _ctx_usage,
+)
+
+from tools.registry import (get_ollama_tools, call_tool, is_destructive, get_risk)
+
+
+TOOL_CALL_SCHEMA = {
+    "type": "object",
+    "required": ["name"],
+    "properties": {
+        "name": {"type": "string"},
+        "arguments": {"type": "object"},
+    },
+}
+
+
+async def _check_postconditions(name: str, args: dict) -> str:
+    """Return empty string if OK, else an error message."""
+    if name == "write_file":
+        try:
+            from tools.filesystem import _resolve
+            p = _resolve(args.get("path", ""), write=True)
+            if p.is_file():
+                actual = p.read_text(encoding="utf-8", errors="replace")
+                if actual != (args.get("content") or ""):
+                    return "content mismatch after write"
+        except Exception:
+            pass
+    elif name == "codebase_write":
+        try:
+            import codebase as cb
+            from pathlib import Path as _P
+            meta = cb.get_meta(args.get("name", ""))
+            if meta:
+                p = (_P(meta["root"]) / args.get("path", "")).resolve()
+                if p.is_file():
+                    actual = p.read_text(encoding="utf-8", errors="replace")
+                    if actual != (args.get("content") or ""):
+                        return "content mismatch after write"
+        except Exception:
+            pass
+    elif name == "codebase_patch":
+        try:
+            import codebase as cb
+            from pathlib import Path as _P
+            meta = cb.get_meta(args.get("name", ""))
+            if meta:
+                p = (_P(meta["root"]) / args.get("path", "")).resolve()
+                if p.is_file():
+                    actual = p.read_text(encoding="utf-8", errors="replace")
+                    find = args.get("find", "")
+                    repl = args.get("replace", "")
+                    if find and find in actual and repl not in actual:
+                        return "patch did not apply"
+        except Exception:
+            pass
+    elif name == "run_command":
+        if "exit_code: 0" not in (args.get("_result") or ""):
+            pass  # exit code checked in _verify_tool_result
+    return ""
+
+
+async def _verify_tool_result(tr, name: str, args: dict):
+    from tool_result import failed
+    if not tr.ok:
+        return tr
+    try:
+        if name in ("write_file", "codebase_write", "codebase_patch",
+                    "obsidian_write_note", "obsidian_append_note"):
+            err = await asyncio.to_thread(_check_postconditions, name, args)
+            if err:
+                return failed(f"self-verification failed: {err}")
+        elif name == "run_command":
+            if "exit_code: 0" not in (tr.data or ""):
+                return failed(f"command non-zero exit: {(tr.data or '')[:200]}")
+    except Exception:
+        pass
+    return tr
 
 
 # System prompts. Two variants.
@@ -605,12 +686,61 @@ async def run_agent(
     log: List[Dict[str, Any]] = []
     nudge_used = False
     det_used = False
+    _fail_tracker: Dict[tuple, int] = {}
 
     # Tool-loop detection: abort a turn after 3 identical calls.
     _loop_fp = None
     _loop_count = 0
 
+    # Pre-turn compaction: if the initial messages are already over the
+    # context threshold, summarize old history before entering the loop.
+    if _ctx_should_compact(messages):
+        _pre_summary = None
+        try:
+            _new_msgs, _pre_summary, _did = await asyncio.to_thread(
+                _ctx_compact, messages, provider, model
+            )
+            if _did:
+                _saved = _ctx_estimate(messages) - _ctx_estimate(_new_msgs)
+                log_event("context_compacted_start", saved_tokens=_saved)
+                messages = _new_msgs
+                if on_event:
+                    try:
+                        await on_event({
+                            "type": "context_compacted",
+                            "saved_tokens": _saved,
+                            "summary": _pre_summary or {},
+                            "usage": _ctx_usage(messages),
+                        })
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     for _ in range(settings.MAX_TOOL_ITERATIONS):
+        # Mid-turn compaction: after tool results accumulate, re-check and
+        # summarize earlier turns if we have crossed the threshold.
+        if _ctx_should_compact(messages):
+            try:
+                _new_msgs, _mid_summary, _did = await asyncio.to_thread(
+                    _ctx_compact, messages, provider, model
+                )
+                if _did:
+                    _saved = _ctx_estimate(messages) - _ctx_estimate(_new_msgs)
+                    log_event("context_compacted_midturn", saved_tokens=_saved)
+                    messages = _new_msgs
+                    if on_event:
+                        try:
+                            await on_event({
+                                "type": "context_compacted",
+                                "saved_tokens": _saved,
+                                "summary": _mid_summary or {},
+                                "usage": _ctx_usage(messages),
+                            })
+                        except Exception:
+                            pass
+            except Exception:
+                pass
         msg = await asyncio.to_thread(
             provider.chat,
             messages=messages,
@@ -622,15 +752,31 @@ async def run_agent(
         if not calls:
             reply = (msg.get("content") or "").strip()
 
-            # A. Some abliterated models write tool calls as text.
+            # A. Text tool call detected -> retry with constrained decoding.
             if _looks_like_text_tool_call(reply) and tools:
-                repaired = _parse_text_tool_call(reply)
-                if repaired and repaired[0] in set(
-                        t["function"]["name"] for t in tools):
-                    calls = [{
-                        "function": {"name": repaired[0],
-                                     "arguments": repaired[1]}
-                    }]
+                try:
+                    msg2 = await asyncio.to_thread(
+                        provider.chat,
+                        messages=messages, tools=None, model=model,
+                        format=TOOL_CALL_SCHEMA,
+                    )
+                    content = (msg2.get("content") or "").strip()
+                    parsed = json.loads(content)
+                    if isinstance(parsed, dict) and parsed.get("name") in set(
+                            t["function"]["name"] for t in tools):
+                        calls = [{"function": {
+                            "name": parsed["name"],
+                            "arguments": parsed.get("arguments") or {},
+                        }}]
+                        log_event("constrained_decode_success", tool=parsed["name"])
+                except Exception:
+                    pass
+                if not calls:
+                    repaired = _parse_text_tool_call(reply)
+                    if repaired and repaired[0] in set(
+                            t["function"]["name"] for t in tools):
+                        calls = [{"function": {"name": repaired[0],
+                                               "arguments": repaired[1]}}]
 
             # B. Nudge retry: the model narrated instead of acting.
             if not calls and tools and not nudge_used and _looks_like_spiral(reply):
@@ -687,7 +833,20 @@ async def run_agent(
                 log_event("rate_limited", tool=name)
                 return rate_limited(f"Rate limited: {rreason}")
 
+            risk = get_risk(name)
+
+            # Checkpoint before any destructive file op
+            checkpoint_id = None
             if is_destructive(name):
+                try:
+                    import checkpoints as _cp
+                    checkpoint_id = await asyncio.to_thread(
+                        _cp.snapshot, session_id, name, args
+                    )
+                except Exception:
+                    checkpoint_id = None
+
+            if is_destructive(name) and risk > settings.AUTO_APPROVE_MAX_RISK:
                 if confirm_callback is None:
                     log_event("confirm_unavailable", tool=name)
                     return failed("This action requires interactive confirmation.")
@@ -695,20 +854,24 @@ async def run_agent(
                 approved = await confirm_callback(call_id, name, args)
                 if approved:
                     result = await asyncio.to_thread(call_tool, name, args)
-                    log_event("confirm_approved", tool=name, args=args)
-                    return succeeded(result)
+                    log_event("confirm_approved", tool=name, args=args,
+                              risk=risk, checkpoint_id=checkpoint_id)
+                    return await _verify_tool_result(succeeded(result), name, args)
                 log_event("confirm_declined", tool=name, args=args)
                 return denied("User declined this action.")
+
+            if is_destructive(name):
+                log_event("auto_approved", tool=name, risk=risk,
+                          checkpoint_id=checkpoint_id)
+                result = await asyncio.to_thread(call_tool, name, args)
+                return await _verify_tool_result(succeeded(result), name, args)
 
             if name == "web_search" and on_event is not None:
                 query = (args or {}).get("query", "")
                 call_id = uuid.uuid4().hex[:12]
                 try:
-                    await on_event({
-                        "type": "search_start",
-                        "query": query,
-                        "call_id": call_id,
-                    })
+                    await on_event({"type": "search_start", "query": query,
+                                    "call_id": call_id})
                 except Exception:
                     pass
 
@@ -720,14 +883,11 @@ async def run_agent(
                     )
 
                 from tools.search import search_structured, format_results
-                structured = await asyncio.to_thread(
-                    search_structured, query, 5
-                )
+                structured = await asyncio.to_thread(search_structured, query, 5)
                 text = format_results(structured)
                 try:
                     await on_event({
-                        "type": "search_results",
-                        "query": query,
+                        "type": "search_results", "query": query,
                         "call_id": call_id,
                         "backend": structured.get("backend", ""),
                         "results": structured.get("results", [])[:5],
@@ -737,7 +897,6 @@ async def run_agent(
                 except Exception:
                     pass
 
-                # Mark recent search for follow-up routing
                 try:
                     _RECENT_SEARCH[session_id] = time.time()
                     if query:
@@ -751,8 +910,6 @@ async def run_agent(
                 if flagged:
                     log_event("injection_detected", tool=name, matched=matched)
                     return failed(f"[INJECTION WARNING] content withheld ({matched})")
-                # Prefix a directive so a small model uses these results
-                # instead of reciting "I don't have real-time data".
                 backend = structured.get("backend") or "web"
                 banner = (
                     "LIVE WEB SEARCH RESULTS (status=succeeded, "
@@ -775,7 +932,7 @@ async def run_agent(
                 if flagged:
                     log_event("injection_detected", tool=name, matched=matched)
                     return failed(f"[INJECTION WARNING] content withheld ({matched})")
-            return tr
+            return await _verify_tool_result(tr, name, args)
         parsed_calls = []
         for call in calls:
             fn = call.get("function") or {}
@@ -821,6 +978,27 @@ async def run_agent(
             }
             log_event("tool_call", tool=name, args=safe_args,
                       result=text[:200], status=tr.status, ok=tr.ok)
+
+            # Spiral guard: abort after 2 identical (tool, args) failures.
+            # Prevents the model from looping on a broken tool until it
+            # hits MAX_TOOL_ITERATIONS.
+            if not tr.ok:
+                try:
+                    fp = (name, json.dumps(args or {}, sort_keys=True, default=str))
+                except Exception:
+                    fp = (name, str(args))
+                _fail_tracker[fp] = _fail_tracker.get(fp, 0) + 1
+                if _fail_tracker[fp] >= 2:
+                    log_event("spiral_aborted", tool=name,
+                              count=_fail_tracker[fp], status=tr.status)
+                    return (
+                        f"I tried {name} twice with the same arguments and it "
+                        f"failed both times ({tr.status}). Last error: "
+                        f"{text[:300]}. This is a configuration problem, "
+                        "not something I can fix by retrying. Check the "
+                        "server logs and the /search/status endpoint.",
+                        log,
+                    )
             log.append({
                 "tool": name,
                 "arguments": safe_args,

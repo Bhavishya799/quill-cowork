@@ -22,7 +22,37 @@ _tools: Dict[str, Dict[str, Any]] = {}
 _connectors: Dict[str, Dict[str, Any]] = {}
 
 
-def tool(fn: Callable = None, *, destructive: bool = False):
+def _derive_risk(destructive: bool, safety: dict | None) -> int:
+    if safety:
+        if safety.get("credential_access") or safety.get("network"):
+            return 3
+        if safety.get("writes_files") or safety.get("open_world"):
+            return 2
+        if safety.get("idempotent"):
+            return 1
+        if safety.get("read_only"):
+            return 0
+    return 2 if destructive else 0
+
+
+def get_risk(name: str) -> int:
+    return _tools.get(name, {}).get("risk", 2 if _tools.get(name, {}).get("destructive") else 0)
+
+
+def get_safety(name: str) -> dict:
+    return _tools.get(name, {}).get("safety", {})
+_connectors: Dict[str, Dict[str, Any]] = {}
+
+
+def tool(fn: Callable = None, *, destructive: bool = False,
+         safety: dict | None = None):
+    """
+    safety: optional dict of {"read_only", "idempotent", "open_world",
+    "writes_files", "network", "credential_access"} booleans.
+    Risk level is derived: 0=read_only, 1=idempotent-write, 2=writes,
+    3=network/credential/destructive. If safety is None, risk is
+    inferred from `destructive` (False->0, True->2).
+    """
     def wrap(f):
         sig = inspect.signature(f)
         hints = get_type_hints(f)
@@ -36,9 +66,12 @@ def tool(fn: Callable = None, *, destructive: bool = False):
             if param.default is inspect.Parameter.empty:
                 required.append(name)
 
+        risk = _derive_risk(destructive, safety)
         _tools[f.__name__] = {
             "function": f,
             "destructive": destructive,
+            "risk": risk,
+            "safety": safety or {},
             "schema": {
                 "type": "function",
                 "function": {

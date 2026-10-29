@@ -27,7 +27,7 @@ and re-measurement is pending.
 ## Features
 
 - 52 tools across 9 connectors: Filesystem, GitHub, Gmail, Web,
-  Wikipedia, Search (Tavily + optional SearxNG), Folder Grants, Codebase, Obsidian
+  Wikipedia, Search (DuckDuckGo + optional Tavily), Folder Grants, Codebase, Obsidian
 - Runs a 4B model on an 8 GB GPU, or CPU-only with the cpu-* slots
 - Parallel tool execution: independent non-destructive calls run
   concurrently (bounded by `MAX_PARALLEL_TOOLS`, default 4)
@@ -35,7 +35,7 @@ and re-measurement is pending.
 - Encrypted credential vault (AES-256-GCM, OS keychain-backed)
 - Codebase indexing with search, grep, symbol lookup, read-all, and
   patch-based edits
-- Local web search via SearxNG (optional; Tavily fallback)
+- Local web search via DuckDuckGo (`websift`, no API key) with Tavily fallback
 - Secret detection: pasted API keys are stored in the vault, not the model
 - Append-only audit log of every tool call, approval, and refusal
 - Streaming speech recognition (Whisper via `faster-whisper`), with
@@ -60,15 +60,19 @@ and re-measurement is pending.
     pip install -r requirements.txt
     cp .env.example .env
 
-    # Pull the models your slots reference:
-    ollama pull huihui_ai/qwen2.5-abliterate:3b        # MODEL_FAST
-    ollama pull richardyoung/granite-4.2-8b-heretic    # MODEL_POWERFUL
+    # Pull the models your slots reference (all abliterated):
+    ollama pull huihui_ai/qwen3-abliterated:4b          # MODEL_FAST
+    ollama pull huihui_ai/qwen3-abliterated:8b          # MODEL_7B base
+    ollama pull huihui_ai/deepseek-r1-abliterated:8b    # MODEL_7B_REASON base
+    ollama pull richardyoung/agents-a1-4b-heretic       # MODEL_BALANCED base
 
     # Build the slot aliases from the Modelfiles.
     # Each pulls its own base model on first run.
-    ollama create quill           -f Modelfile
-    ollama create quill-cpu-fast  -f Modelfile.cpu-fast
-    ollama create quill-cpu-smart -f Modelfile.cpu-smart
+    ollama create quill            -f Modelfile
+    ollama create quill-7b         -f Modelfile.7b
+    ollama create quill-7b-reason  -f Modelfile.7b-reason
+    ollama create quill-cpu-fast   -f Modelfile.cpu-fast
+    ollama create quill-cpu-smart  -f Modelfile.cpu-smart
 
     python main.py
 
@@ -94,11 +98,17 @@ Variables in `backend/.env`:
 
 Model slots:
 
-- `MODEL_FAST` -- `qwen2.5:3b`
-- `MODEL_BALANCED` -- `quill` (built from `Modelfile`, agents-a1-4b base)
-- `MODEL_POWERFUL` -- `richardyoung/granite-4.2-8b-heretic` (capped at 8K ctx)
+- `MODEL_FAST` -- `huihui_ai/qwen3-abliterated:4b` (4B, ~2.5 GB)
+- `MODEL_BALANCED` -- `quill` (4B, agents-a1-4b-heretic base)
+- `MODEL_7B` -- `quill-7b` (Qwen3 8B abliterated, best tool calls, ~5.2 GB)
+- `MODEL_7B_REASON` -- `quill-7b-reason` (DeepSeek-R1 8B abliterated, 32K ctx, ~5.2 GB)
+- `MODEL_POWERFUL` -- `quill-7b-reason`
 - `MODEL_CPU_FAST` -- `quill-cpu-fast` (0.6B)
 - `MODEL_CPU_SMART` -- `quill-cpu-smart` (4B)
+
+The 7B/8B slots fit an 8 GB GPU at Q4. The reasoning slot benefits from
+`OLLAMA_NUM_CTX=16384` on 12 GB cards and `32768` on 16 GB+ cards.
+`DEFAULT_SLOT=7b` makes the Qwen3 8B abliterated model the default.
 
 Swap any slot by editing the tag, then run
 `ollama create <alias> -f <Modelfile>` for the `quill*` aliases.

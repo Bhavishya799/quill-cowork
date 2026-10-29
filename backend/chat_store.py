@@ -1,10 +1,10 @@
 """Chat history persistence via SQLite.
 
-Single-user local-first: one DB file at backend/workspace/.quill/chat.db.
-All writes serialized through a lock. WAL journal for concurrent reads.
+Append-only: messages are upserted by (chat_id, msg_id), never deleted
+by a save. Deletion is explicit via delete_chat/delete_message.
+Text fields are encrypted at rest via chat_crypto.
 """
 from __future__ import annotations
-
 import json
 import sqlite3
 import threading
@@ -12,9 +12,10 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import chat_crypto
+
 DB_PATH = Path(__file__).parent / "workspace" / ".quill" / "chat.db"
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
 _lock = threading.Lock()
 
 _SCHEMA = """
@@ -47,6 +48,26 @@ def _conn() -> sqlite3.Connection:
 def init() -> None:
     with _lock, _conn() as c:
         c.executescript(_SCHEMA)
+        try:
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_unique "
+                      "ON messages(chat_id, msg_id)")
+            has_unique = True
+        except sqlite3.IntegrityError:
+            has_unique = False
+            print("[chat_store] warning: duplicate (chat_id,msg_id) rows; "
+                  "unique index not created")
+        # Migration: encrypt any plaintext rows
+        try:
+            chat_crypto.migrate_table(c, "messages", ["text"])
+        except Exception:
+            pass
+
+
+def _has_unique_index(c) -> bool:
+    row = c.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_messages_unique'"
+    ).fetchone()
+    return bool(row)
 
 
 def _safe_json(s: Optional[str]) -> dict:
@@ -67,11 +88,8 @@ def list_chats() -> List[Dict]:
             "FROM chats c ORDER BY c.updated_at DESC"
         ).fetchall()
     return [
-        {
-            "id": r[0], "title": r[1],
-            "created_at": r[2], "updated_at": r[3],
-            "message_count": r[4],
-        }
+        {"id": r[0], "title": r[1], "created_at": r[2],
+         "updated_at": r[3], "message_count": r[4]}
         for r in rows
     ]
 
@@ -93,7 +111,9 @@ def get_chat(chat_id: str) -> Optional[Dict]:
         "id": row[0], "title": row[1],
         "created_at": row[2], "updated_at": row[3],
         "messages": [
-            {"id": m[0], "role": m[1], "text": m[2] or "", **_safe_json(m[3])}
+            {"id": m[0], "role": m[1],
+             "text": chat_crypto.decrypt(m[2] or ""),
+             **_safe_json(m[3])}
             for m in msgs
         ],
     }
@@ -113,7 +133,7 @@ def upsert_chat(chat_id: str, title: str, messages: List[Dict]) -> None:
             "  title = excluded.title, updated_at = excluded.updated_at",
             (chat_id, title or "New task", created, now),
         )
-        c.execute("DELETE FROM messages WHERE chat_id = ?", (chat_id,))
+        has_unique = _has_unique_index(c)
         for i, m in enumerate(messages or []):
             if not isinstance(m, dict):
                 continue
@@ -124,17 +144,57 @@ def upsert_chat(chat_id: str, title: str, messages: List[Dict]) -> None:
             text = m.get("text")
             if not isinstance(text, str):
                 text = "" if text is None else str(text)
-            meta = {k: v for k, v in m.items()
-                    if k not in ("id", "role", "text")}
-            c.execute(
-                "INSERT INTO messages(chat_id, msg_id, role, text, "
-                "meta_json, ts) VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    chat_id, mid, role, text,
-                    json.dumps(meta, default=str) if meta else None,
-                    now + i * 0.001,
-                ),
-            )
+            meta = {k: v for k, v in m.items() if k not in ("id", "role", "text")}
+            meta_json = json.dumps(meta, default=str) if meta else None
+            enc = chat_crypto.encrypt(text)
+            if has_unique:
+                c.execute(
+                    "INSERT INTO messages(chat_id, msg_id, role, text, meta_json, ts) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(chat_id, msg_id) DO UPDATE SET "
+                    "  role = excluded.role, text = excluded.text, "
+                    "  meta_json = excluded.meta_json",
+                    (chat_id, mid, role, enc, meta_json, now + i * 0.001),
+                )
+            else:
+                exists = c.execute(
+                    "SELECT 1 FROM messages WHERE chat_id = ? AND msg_id = ?",
+                    (chat_id, mid),
+                ).fetchone()
+                if exists:
+                    c.execute(
+                        "UPDATE messages SET role = ?, text = ?, meta_json = ? "
+                        "WHERE chat_id = ? AND msg_id = ?",
+                        (role, enc, meta_json, chat_id, mid),
+                    )
+                else:
+                    c.execute(
+                        "INSERT INTO messages(chat_id, msg_id, role, text, meta_json, ts) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (chat_id, mid, role, enc, meta_json, now + i * 0.001),
+                    )
+
+
+def append_message(chat_id: str, msg_id: int, role: str, text: str,
+                   meta: Optional[Dict] = None) -> None:
+    with _lock, _conn() as c:
+        c.execute(
+            "INSERT INTO messages(chat_id, msg_id, role, text, meta_json, ts) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (chat_id, msg_id, role, chat_crypto.encrypt(text or ""),
+             json.dumps(meta or {}, default=str) if meta else None, time.time()),
+        )
+        c.execute("UPDATE chats SET updated_at = ? WHERE id = ?",
+                  (time.time(), chat_id))
+
+
+def delete_message(chat_id: str, msg_id: int) -> bool:
+    with _lock, _conn() as c:
+        cur = c.execute(
+            "DELETE FROM messages WHERE chat_id = ? AND msg_id = ?",
+            (chat_id, msg_id),
+        )
+        return cur.rowcount > 0
 
 
 def rename_chat(chat_id: str, title: str) -> bool:

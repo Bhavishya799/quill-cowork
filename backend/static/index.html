@@ -86,6 +86,15 @@ main{flex:1;min-width:0;display:flex;flex-direction:column}
 .main-header{height:52px;flex:none;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--border-2)}
 .main-title{flex:1;min-width:0;font:500 14px Geist,sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
 .main-model{font:400 12px Geist,sans-serif;color:var(--ink-5)}
+.main-context{font:500 11px 'Geist Mono',monospace;color:var(--ink-5);padding:2px 7px;border-radius:5px;background:var(--chip);margin-left:8px;transition:background .15s,color .15s}
+.main-context.warn{background:#FBF1DC;color:#8A5A1A}
+.main-context.critical{background:#F5E0DD;color:#8A2D22}
+:root[data-theme="dark"] .main-context{background:#2A2519;color:#BDB595}
+:root[data-theme="dark"] .main-context.warn{background:#3D3118;color:#F5B800}
+:root[data-theme="dark"] .main-context.critical{background:#3D2018;color:#E86A5A}
+.quill-toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:10px;font:500 13px Geist,sans-serif;z-index:200;box-shadow:0 8px 24px rgba(35,33,29,.22);animation:qc-in .2s ease-out;max-width:80vw;text-align:center}
+:root[data-theme="dark"] .quill-toast{background:#F5C842;color:#0D0C09}
+
 
 #stream{flex:1;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
 #stream.empty{justify-content:center;padding-bottom:120px}
@@ -427,6 +436,7 @@ main{position:relative}
       </button>
       <span class="main-title" id="main-title">New task</span>
       <span class="main-model" id="main-model">Quill</span>
+      <span class="main-context" id="context-usage" title="Context window usage">—</span>
     </header>
 
     <div id="search-dock"></div>
@@ -459,6 +469,9 @@ main{position:relative}
             <span id="conn-inline">0 connected</span>
           </span>
           <div class="composer-spacer"></div>
+          <button class="composer-btn" id="btn-compact" title="Compact context (summarize prior turns)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h16M4 10h16M9 6l3 4 3-4M9 18l3-4 3 4"></path></svg>
+          </button>
           <button class="composer-model" id="btn-model">
             <span id="model-name">Quill</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
@@ -607,6 +620,55 @@ function humanArgs(a){
   try { return JSON.stringify(a); } catch(e){ return String(a); }
 }
 
+
+/* ---------- Context compaction UI ---------- */
+function quillToast(msg){
+  const t = document.createElement('div');
+  t.className = 'quill-toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){ try { t.remove(); } catch(_){} }, 2800);
+}
+
+function updateContextUsage(u){
+  const el = document.getElementById('context-usage');
+  if (!el || !u) return;
+  const used = u.used || 0;
+  const window = u.window || 8192;
+  const pct = Math.min(100, Math.round((used / window) * 100));
+  el.textContent = pct + '%';
+  el.title = used.toLocaleString() + ' / ' + window.toLocaleString() + ' tokens';
+  el.classList.remove('warn', 'critical');
+  if (pct >= 90) el.classList.add('critical');
+  else if (pct >= 75) el.classList.add('warn');
+}
+
+async function refreshContextUsage(){
+  try {
+    const r = await fetch('/context/usage?session_id=' + encodeURIComponent(state.activeId || 'default'));
+    if (!r.ok) return;
+    updateContextUsage(await r.json());
+  } catch(_){}
+}
+
+async function compactContext(){
+  if (!isIdle()) return;
+  const sid = state.activeId || 'default';
+  try {
+    const r = await fetch('/context/compact?session_id=' + encodeURIComponent(sid), { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok){
+      quillToast('Nothing to compact: ' + (d.error || 'unknown'));
+      return;
+    }
+    const saved = (d.messages_before || 0) - (d.messages_after || 0);
+    quillToast('Context compacted · ' + saved + ' messages summarized');
+    updateContextUsage(d.usage);
+  } catch(e){
+    quillToast('Compaction failed: ' + e.message);
+  }
+}
+
 /* ---------- WebSocket ---------- */
 function connectWS(){
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
@@ -627,6 +689,16 @@ function scheduleReconnect(){
   wsReconnect = setTimeout(function(){ wsReconnect = null; connectWS(); }, 2500);
 }
 function handleServerMessage(data){
+  if (data && data.type === 'context_compacted') {
+    const saved = data.saved_tokens || 0;
+    quillToast('Context compacted · saved ~' + saved.toLocaleString() + ' tokens');
+    if (data.usage) updateContextUsage(data.usage);
+    return;
+  }
+  if (data && data.type === 'context_usage') {
+    updateContextUsage(data);
+    return;
+  }
   if (data && (data.type === 'search_start' || data.type === 'search_results')) {
     try { document.dispatchEvent(new CustomEvent('quill:search', { detail: data })); }
     catch(e){}
@@ -703,6 +775,7 @@ function handleServerMessage(data){
 
     renderChatList();
     renderHeader();
+    refreshContextUsage();
     startStream(chatId, data.reply || '(empty response)', ++runId);
   } else if (data.type === 'error'){
     startStream(chatId, 'Error: ' + (data.message || 'unknown'), ++runId);
@@ -756,11 +829,21 @@ async function loadSlots(){
     const r = await fetch('/models/slots');
     const d = await r.json();
     const slots = d.slots || {};
+    const SLOT_LABELS = {
+      'fast': 'Fast 4B',
+      'balanced': 'Balanced 4B',
+      '7b': '7B Agent',
+      '7b-reason': '7B Reasoning',
+      'powerful': 'Powerful',
+      'cpu-fast': 'CPU Fast',
+      'cpu-smart': 'CPU Smart'
+    };
     state.models = Object.keys(slots).map(function(id){
+      const label = SLOT_LABELS[id] || ('Quill ' + id.charAt(0).toUpperCase() + id.slice(1));
       return {
         id: id,
-        name: 'Quill ' + id.charAt(0).toUpperCase() + id.slice(1),
-        short: id.charAt(0).toUpperCase() + id.slice(1),
+        name: label,
+        short: label,
         desc: slots[id],
         raw: slots[id]
       };
@@ -1465,6 +1548,7 @@ document.addEventListener('click', function(e){
     renderStream();
     renderHeader();
     renderComposerState();
+    refreshContextUsage();
     return;
   }
   const conn = closest('[data-conn]');
@@ -1543,6 +1627,8 @@ el('btn-add-codebase').addEventListener('click', function(){
 });
 
 el('btn-profile').addEventListener('click', openProfile);
+el('btn-compact').addEventListener('click', compactContext);
+refreshContextUsage();
 el('btn-profile-close').addEventListener('click', closeProfile);
 el('profile-overlay').addEventListener('click', closeProfile);
 el('profile-name').addEventListener('input', function(e){

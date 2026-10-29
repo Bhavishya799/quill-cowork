@@ -20,7 +20,7 @@ backend/vault.enc.tmp
 backend/mycodebase.txt
 backend/dump.py
 
-# Workspace user data (belt and braces — dir already ignored)
+# Workspace user data (belt and braces Ã¢â‚¬â€ dir already ignored)
 workspace/
 # Code dumps (contain .env secrets)
 codebase_dump.txt
@@ -83,3 +83,29 @@ finalize_audio.py
 # MCP: local server configs with secrets
 mcp_servers.local.json
 backend/mcp_servers.local.json
+
+# ==== Added 2026-10-30 ====
+# Fix backups (pre-change file snapshots)
+.fix_backups/
+
+# Local ntfy (76MB binary + LAN IP in config)
+ntfy/
+ntfy-server.yml
+
+# Scratch and one-shot scripts not covered above
+add_notify_routes.py
+recover_all.py
+recover_v2.py
+repair_critical.py
+apply_notify.py
+apply_critical_fixes.py
+apply_context_compaction.py
+apply_search_upgrade.py
+apply_search_and_model_upgrade.py
+fix_search_v2.py
+fix_ddg_errors.py
+fix_run_and_label.py
+fix_mojibake.py
+/dump.py
+/notify.py
+body.json

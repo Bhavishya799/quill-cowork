@@ -199,7 +199,14 @@ function renderToggle(){
   if (!btn || !label) return;
   if (!state.configured){
     btn.style.cssText = 'border-color:#E8D5D1;color:#8A2D22;opacity:.6';
-    label.textContent = 'Search off';
+    label.textContent = 'Install websift';
+    btn.title = state.hint || 'Search backend not available. Run: pip install websift';
+    return;
+  }
+  if (state.enabled && state.last_result_ok === false){
+    btn.style.cssText = 'border-color:#F5D9B8;color:#8A5A1A';
+    btn.title = state.hint || 'Last search failed — click to retry';
+    label.textContent = 'Search on';
     return;
   }
   if (state.enabled){
@@ -218,6 +225,7 @@ async function loadStatus(){
     const d = await r.json();
     state.enabled = !!d.enabled;
     state.configured = !!d.configured;
+    state.hint = d.hint || '';
     renderToggle();
     console.log('[search] status', {enabled: state.enabled, configured: state.configured});
   } catch(e){

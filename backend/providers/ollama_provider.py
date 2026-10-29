@@ -21,26 +21,26 @@ class OllamaProvider(BaseProvider):
             timeout=self.timeout,
         )
 
-    def chat(self, messages, tools=None, model=None):
-        # Output cap + low temperature. Without num_predict the
-        # abliterated model narrates for thousands of tokens when it
-        # should be calling a tool.
+    def chat(self, messages, tools=None, model=None, format=None):
         last_error = None
         for attempt in range(3):
             try:
-                response = self.client.chat(
+                kwargs = dict(
                     model=model or self.default_model,
                     messages=messages,
                     tools=tools or None,
                     think=False,
                     options={
-                        "num_ctx": 8192,
+                        "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "8192")),
                         "num_predict": 1024,
                         "temperature": 0.2,
                         "top_p": 0.9,
                         "repeat_penalty": 1.15,
                     },
                 )
+                if format is not None:
+                    kwargs["format"] = format
+                response = self.client.chat(**kwargs)
                 msg = response["message"]
                 return {
                     "role": msg.get("role", "assistant"),

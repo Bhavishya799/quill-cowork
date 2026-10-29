@@ -8,12 +8,14 @@ class Settings:
     DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "ollama")
     OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
-    MODEL_FAST = os.getenv("MODEL_FAST", "qwen2.5:3b")
+    MODEL_FAST = os.getenv("MODEL_FAST", "huihui_ai/qwen3-abliterated:4b")
     MODEL_BALANCED = os.getenv("MODEL_BALANCED", "quill")
-    MODEL_POWERFUL = os.getenv("MODEL_POWERFUL", "qwen2.5:7b")
+    MODEL_7B = os.getenv("MODEL_7B", "quill-7b")
+    MODEL_7B_REASON = os.getenv("MODEL_7B_REASON", "quill-7b-reason")
+    MODEL_POWERFUL = os.getenv("MODEL_POWERFUL", "quill-7b-reason")
     MODEL_CPU_FAST = os.getenv("MODEL_CPU_FAST", "quill-cpu-fast")
     MODEL_CPU_SMART = os.getenv("MODEL_CPU_SMART", "quill-cpu-smart")
-    DEFAULT_SLOT = os.getenv("DEFAULT_SLOT", "balanced")
+    DEFAULT_SLOT = os.getenv("DEFAULT_SLOT", "7b")
 
     OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", MODEL_BALANCED)
 
@@ -21,6 +23,8 @@ class Settings:
     PORT = int(os.getenv("PORT", "8000"))
     MAX_TOOL_ITERATIONS = int(os.getenv("MAX_TOOL_ITERATIONS", "20"))
     MAX_PARALLEL_TOOLS = int(os.getenv("MAX_PARALLEL_TOOLS", "4"))
+    AUTO_APPROVE_MAX_RISK = int(os.getenv("AUTO_APPROVE_MAX_RISK", "0"))
+    ENABLE_RUN_COMMAND = os.getenv("ENABLE_RUN_COMMAND", "0")
     MEMORY_ENABLED = os.getenv("MEMORY_ENABLED", "1")
     MEMORY_MODEL = os.getenv("MEMORY_MODEL", "nomic-embed-text")
     MEMORY_TOP_K = int(os.getenv("MEMORY_TOP_K", "5"))
@@ -35,6 +39,8 @@ class Settings:
         return {
             "fast": self.MODEL_FAST,
             "balanced": self.MODEL_BALANCED,
+            "7b": self.MODEL_7B,
+            "7b-reason": self.MODEL_7B_REASON,
             "powerful": self.MODEL_POWERFUL,
             "cpu-fast": self.MODEL_CPU_FAST,
             "cpu-smart": self.MODEL_CPU_SMART,
