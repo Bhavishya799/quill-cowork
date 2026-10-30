@@ -114,3 +114,4 @@ backend/.quill_rust/
 rust_core/target/
 .quill_rust/
 rust_core/target/
+installer_output/
