@@ -1420,6 +1420,13 @@ fn cmd_route() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    if has(&["semantic", "meaning", "concept", "where is", "how does", "what handles"], &m) && has(&["codebase", "repo", "project"], &m) {
+        keep.insert("codebase_semantic_search".to_string());
+        keep.insert("list_codebases".to_string());
+    }
+    if has(&["build", "rebuild", "index", "embed"], &m) && has(&["semantic"], &m) {
+        keep.insert("codebase_semantic_index".to_string());
+    }
     // Codebase
     if has(&["codebases"], &m) || (has(&["codebase"], &m) && has(&["connected", "indexed", "available", "my", "list", "show"], &m)) {
         keep.insert("list_codebases".to_string());

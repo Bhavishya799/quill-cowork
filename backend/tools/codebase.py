@@ -519,3 +519,18 @@ def codebase_git(name: str, action: str, message: str = "",
     if a == "push":
         return _git_push(name, remote="origin", branch=branch)
     return f"unknown action: {action}"
+    @tool
+def codebase_semantic_index(name: str) -> str:
+    """Build or rebuild the semantic AI vector index for a connected codebase.
+    This allows finding code by meaning instead of exact keyword matches.
+    WARNING: This can take several minutes depending on codebase size."""
+    import semantic_index
+    return semantic_index.build_index(name)
+
+@tool
+def codebase_semantic_search(name: str, query: str) -> str:
+    """Search the codebase using AI semantic meaning.
+    Use this for conceptual questions like 'where is authentication handled?'
+    or 'how does the database connection work?' instead of exact keyword grep."""
+    import semantic_index
+    return semantic_index.search(name, query, top_k=6)

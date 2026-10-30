@@ -391,6 +391,11 @@ def filter_tools(message: str, all_tools: list, session_id: str = "") -> list:
                          "create_draft", "reply_to_email", "list_labels",
                          "mark_as_read", "archive_email", "trash_email"])
 
+    if has("semantic", "meaning", "concept", "where is", "how does", "what handles") and has("codebase", "repo", "project"):
+        keep.add("codebase_semantic_search")
+        keep.add("list_codebases")
+    if has("build", "rebuild", "index", "embed") and has("semantic"):
+        keep.add("codebase_semantic_index")
     # Codebase
     if has("codebases") or (has("codebase") and has(
             "connected", "indexed", "available", "my", "list", "show")):
