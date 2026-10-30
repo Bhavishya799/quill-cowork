@@ -112,3 +112,5 @@ body.json
 backend/.quill_rust/
 # Rust build target
 rust_core/target/
+.quill_rust/
+rust_core/target/
