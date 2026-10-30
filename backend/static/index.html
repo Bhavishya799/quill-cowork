@@ -371,6 +371,10 @@ main{position:relative}
 :root[data-theme="dark"] #btn-theme{color:#F5C842;border-color:#4A3F1A}
 :root[data-theme="dark"] #btn-theme:hover{background:#2A2519}
 
+
+/* Assistant message links */
+.blk-p a,.blk-li-text a,.blk-h a{color:var(--link);text-decoration:underline;text-underline-offset:2px}
+.blk-p a:hover,.blk-li-text a:hover,.blk-h a:hover{opacity:.8}
 </style>
 <script>(function(){try{var t=localStorage.getItem("quill.theme");if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
 </head>
@@ -573,7 +577,7 @@ const DONE = {
 const LS_NAME = 'quill.user.name';
 
 const state = {
-  chats: [{ id: uid(), title: 'New task', msgs: [] }],
+  chats: [{ id: uid(), title: 'New task', msgs: [], _loaded: true }],
   activeId: null,
   draft: '',
   attachments: [],
@@ -879,6 +883,64 @@ async function uploadAttachment(file){
   return d.path;
 }
 
+async function loadChats(){
+  try {
+    const r = await fetch('/chats');
+    const d = await r.json();
+    const list = (d.chats || []);
+    if (list.length === 0) return;
+    const loaded = list.map(function(c){
+      return { id: c.id, title: c.title, msgs: [], _loaded: false };
+    });
+    state.chats = loaded;
+    state.activeId = loaded[0].id;
+    await selectChat(loaded[0].id);
+    renderChatList();
+    renderStream();
+    renderHeader();
+    renderComposerState();
+  } catch(e){ console.warn('loadChats failed', e); }
+}
+
+async function selectChat(chatId){
+  const c = state.chats.find(function(x){ return x.id === chatId; });
+  if (!c) return;
+  state.activeId = chatId;
+  if (c._loaded) return;
+  try {
+    const r = await fetch('/chats/' + encodeURIComponent(chatId));
+    const d = await r.json();
+    if (d && d.messages){
+      c.msgs = d.messages.map(function(m){
+        const msg = { id: nextMsgId(), role: m.role, text: m.text || '' };
+        if (m.files && m.files.length) msg.files = m.files;
+        return msg;
+      });
+    }
+    c._loaded = true;
+  } catch(e){ console.warn('selectChat failed', e); c._loaded = true; }
+}
+
+async function persistChat(chatId){
+  const c = state.chats.find(function(x){ return x.id === chatId; });
+  if (!c) return;
+  if (!c.msgs.some(function(m){ return m.role === 'user' || m.role === 'assistant'; })) return;
+  const messages = c.msgs
+    .filter(function(m){ return m.role === 'user' || m.role === 'assistant'; })
+    .map(function(m){
+      const out = { id: m.id, role: m.role, text: m.text || '' };
+      if (m.files && m.files.length) out.files = m.files;
+      return out;
+    });
+  try {
+    await fetch('/chats/' + encodeURIComponent(chatId), {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ title: c.title || 'New task', messages: messages })
+    });
+  } catch(e){ console.warn('persistChat failed', e); }
+}
+
 async function sendMessage(){
   const text = state.draft.trim();
   if (!text || !isIdle()) return;
@@ -927,6 +989,7 @@ async function sendMessage(){
   renderChatList();
   renderHeader();
   renderStream();
+  persistChat(chatId);
 
   try { ws.send(JSON.stringify({ message: wireText, session_id: chatId })); }
   catch(e){ startStream(chatId, 'Failed to send: ' + e.message, ++runId); }
@@ -955,6 +1018,7 @@ function startStream(chatId, full, my){
       renderStream();
       renderChatList();
       renderComposerState();
+      persistChat(chatId);
     }
   }, 16);
 }
@@ -1028,6 +1092,7 @@ function retryLast(){
 
 /* ---------- Delete chat ---------- */
 function deleteChat(id){
+  fetch('/chats/' + encodeURIComponent(id), { method: 'DELETE' }).catch(function(){});
   const idx = state.chats.findIndex(function(c){ return c.id === id; });
   if (idx < 0) return;
   const wasActive = state.activeId === id;
@@ -1080,6 +1145,7 @@ function startRename(chatId){
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ title: newTitle })
       }).catch(function(){});
+      persistChat(chatId);
     } catch(e){}
     renderHeader();
     renderChatList();
@@ -1105,6 +1171,13 @@ function startRename(chatId){
 }
 
 /* ---------- Rendering ---------- */
+function renderInline(s){
+  var e = esc(s);
+  return e.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, function(_, text, url){
+    return '<a href="' + url + '" target="_blank" rel="noopener">' + text + '</a>';
+  });
+}
+
 function blocksHtml(text){
   const out = [];
   const parts = String(text).split(/```/);
@@ -1118,7 +1191,7 @@ function blocksHtml(text){
     }
     let para = [];
     function flush(){
-      if (para.length){ out.push('<p class="blk-p">' + esc(para.join('\n')) + '</p>'); para = []; }
+      if (para.length){ out.push('<p class="blk-p">' + renderInline(para.join('\n')) + '</p>'); para = []; }
     }
     part.split('\n').forEach(function(raw){
       const line = raw.replace(/\*\*(.+?)\*\*/g, '$1').replace(/`([^`]+)`/g, '$1');
@@ -1126,13 +1199,13 @@ function blocksHtml(text){
       if (!line.trim()) return flush();
       if ((m = line.match(/^\s*#{1,6}\s+(.*)/))){
         flush();
-        out.push('<div class="blk-h">' + esc(m[1]) + '</div>');
+        out.push('<div class="blk-h">' + renderInline(m[1]) + '</div>');
       } else if ((m = line.match(/^\s*[-*•]\s+(.*)/))){
         flush();
-        out.push('<div class="blk-li"><span class="blk-li-marker">•</span><span class="blk-li-text">' + esc(m[1]) + '</span></div>');
+        out.push('<div class="blk-li"><span class="blk-li-marker">•</span><span class="blk-li-text">' + renderInline(m[1]) + '</span></div>');
       } else if ((m = line.match(/^\s*(\d+)[.)]\s+(.*)/))){
         flush();
-        out.push('<div class="blk-li"><span class="blk-li-marker">' + esc(m[1]) + '.</span><span class="blk-li-text">' + esc(m[2]) + '</span></div>');
+        out.push('<div class="blk-li"><span class="blk-li-marker">' + esc(m[1]) + '.</span><span class="blk-li-text">' + renderInline(m[2]) + '</span></div>');
       } else {
         para.push(line);
       }
@@ -1176,6 +1249,10 @@ function renderStream(){
               '<button class="msg-action" data-retry="' + m.id + '">' +
                 '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path></svg>' +
                 '<span>Retry</span>' +
+              '</button>' +
+              '<button class="msg-action" data-speak="1" title="Read aloud">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M19 5a9 9 0 0 1 0 14"></path></svg>' +
+                '<span>Speak</span>' +
               '</button>' +
             '</div>'
           : '';
@@ -1472,12 +1549,12 @@ function onFiles(e){
 }
 
 function newChat(){
-  const empty = state.chats.find(function(c){ return c.msgs.length === 0 && c.title === 'New task'; });
+  const empty = state.chats.find(function(c){ return c._loaded && c.msgs.length === 0 && c.title === 'New task'; });
   if (empty){
     state.activeId = empty.id;
   } else {
     const id = uid();
-    state.chats.unshift({ id: id, title: 'New task', msgs: [] });
+    state.chats.unshift({ id: id, title: 'New task', msgs: [], _loaded: true });
     state.activeId = id;
   }
   state.draft = '';
@@ -1705,6 +1782,7 @@ renderHeader();
 renderComposerState();
 renderAttachments();
 connectWS();
+loadChats();
 loadConnectors();
 loadCodebases();  
 loadSlots();

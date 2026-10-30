@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import re
 import time
@@ -369,6 +369,12 @@ def filter_tools(message: str, all_tools: list, session_id: str = "") -> list:
     if has("comment", "reply") and has("issue", "pr"):
         keep.add("comment_on_issue")
 
+    # ---- Deep search ----
+    if any(w in m for w in ("research", "investigate", "deep dive",
+                             "look into", "find out about", "read the pages",
+                             "read the sources", "check the sources",
+                             "scan the pages", "verify", "cross-check")):
+        keep.update(["deep_search", "read_page", "web_search"])
     # ---- Wikipedia / Web fetch / Web search ----
     if re.search(r"\bhttps?://", m) and not has("email", "gmail"):
         keep.add("fetch_page")

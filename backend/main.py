@@ -34,6 +34,10 @@ import chat_store
 import memory
 import mcp_client
 
+# --- Rust Bridge Integration ---
+import quill_rust
+quill_rust.install()
+# -------------------------------
 
 SESSIONS: "OrderedDict[str, list]" = OrderedDict()
 SESSION_TS: dict = {}
@@ -1275,7 +1279,6 @@ def _inject_pending_archive(message: str, sid: str) -> str:
         return message
     PENDING_ARCHIVE.pop(sid, None)
     return f"{text} (path: {pending})"
-
 
 
 # ============ Critical-fix endpoints ============
