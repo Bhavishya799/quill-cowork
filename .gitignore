@@ -109,3 +109,5 @@ fix_mojibake.py
 /dump.py
 /notify.py
 body.json
+.quill_rust/
+backend/.quill_rust/
