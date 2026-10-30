@@ -1,6 +1,6 @@
 import os
 import time
-from typing import List
+from typing import List, Generator
 
 import ollama
 
@@ -21,7 +21,7 @@ class OllamaProvider(BaseProvider):
             timeout=self.timeout,
         )
 
-    def chat(self, messages, tools=None, model=None, format=None):
+    def chat(self, messages, tools=None, model=None, format=None, stream=False):
         last_error = None
         for attempt in range(3):
             try:
@@ -32,7 +32,7 @@ class OllamaProvider(BaseProvider):
                     think=False,
                     options={
                         "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "8192")),
-                        "num_predict": 1024,
+                        "num_predict": 2048,
                         "temperature": 0.2,
                         "top_p": 0.9,
                         "repeat_penalty": 1.15,
@@ -40,6 +40,13 @@ class OllamaProvider(BaseProvider):
                 )
                 if format is not None:
                     kwargs["format"] = format
+                
+                if stream:
+                    response = self.client.chat(**kwargs, stream=True)
+                    for chunk in response:
+                        yield chunk["message"]
+                    return
+
                 response = self.client.chat(**kwargs)
                 msg = response["message"]
                 return {

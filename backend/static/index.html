@@ -710,6 +710,28 @@ function handleServerMessage(data){
   }
   const chatId = state.runChat;
   if (chatId == null) return;
+  if (data.type === 'stream') {
+    const chatId = state.runChat;
+    if (chatId == null) return;
+    
+    if (!state.streamingMsgId) {
+      state.streamingMsgId = pushMsg(chatId, { role: 'assistant', text: '', streaming: true });
+      state.phase = 'streaming';
+      renderStream();
+    }
+    
+    const c = state.chats.find(x => x.id === chatId);
+    const msg = c && c.msgs.find(m => m.id === state.streamingMsgId);
+    if (msg) {
+      msg.text += data.text;
+      const node = document.querySelector(`[data-msg-id="${state.streamingMsgId}"] .msg-asst-blocks`);
+      if (node) node.innerHTML = blocksHtml(msg.text);
+      const stream = el('stream');
+      if (stream) stream.scrollTop = stream.scrollHeight;
+    }
+    return;
+  }
+
   if (data.type === 'thinking'){
     state.phase = 'thinking';
     renderStream();
@@ -777,10 +799,21 @@ function handleServerMessage(data){
       });
     }
 
-    renderChatList();
-    renderHeader();
-    refreshContextUsage();
-    startStream(chatId, data.reply || '(empty response)', ++runId);
+    if (state.streamingMsgId) {
+      patchMsg(chatId, state.streamingMsgId, { text: data.reply || '(empty response)', streaming: false });
+      state.streamingMsgId = null;
+      state.phase = 'idle';
+      state.runChat = null;
+      renderStream();
+      renderChatList();
+      renderComposerState();
+      persistChat(chatId);
+    } else {
+      renderChatList();
+      renderHeader();
+      refreshContextUsage();
+      startStream(chatId, data.reply || '(empty response)', ++runId);
+    }
   } else if (data.type === 'error'){
     startStream(chatId, 'Error: ' + (data.message || 'unknown'), ++runId);
   }
@@ -956,6 +989,7 @@ async function sendMessage(){
 
   state.phase = 'thinking';
   state.runChat = chatId;
+  state.streamingMsgId = null;
   el('input').value = '';
   state.draft = '';
   state.attachments = [];
@@ -1070,6 +1104,7 @@ function stopRun(){
   }
   state.phase = 'idle';
   state.runChat = null;
+  state.streamingMsgId = null;
   renderStream();
   renderComposerState();
 }
