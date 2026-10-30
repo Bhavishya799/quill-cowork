@@ -26,10 +26,9 @@ class ResearchConnector:
 
 
 _DISTILL_SYSTEM = (
-    "You extract evidence from one web page. You are a filter, not a writer. "
-    "Given a QUESTION and PAGE text, return only material that helps answer it. "
-    "Copy exact phrases; never paraphrase numbers, names, or dates; if the page "
-    "does not answer the question set relevant=false and return empty lists; "
+    "You extract evidence from web page chunks. You are a filter, not a writer. "
+    "Given a QUESTION and PAGE CHUNKS, return only material that helps answer it. "
+    "Copy exact phrases; never paraphrase numbers, names, or dates; "
     "never invent facts; ignore navigation, ads, cookie banners, boilerplate. "
     "Output JSON only."
 )
@@ -39,8 +38,17 @@ _SCHEMA = {
     "required": ["relevant", "facts"],
     "properties": {
         "relevant": {"type": "boolean"},
-        "facts": {"type": "array", "items": {"type": "string"}},
-        "title": {"type": "string"},
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "chunk_id": {"type": "integer"},
+                    "quote": {"type": "string"}
+                },
+                "required": ["chunk_id", "quote"]
+            }
+        },
     },
 }
 
@@ -104,16 +112,12 @@ def _parse_json(raw: str) -> dict:
     return {}
 
 
-def _sentences(text: str) -> List[str]:
-    parts = re.split(r"(?<=[.!?])\s+|\n+", text or "")
-    return [p.strip() for p in parts if len(p.strip()) > 30]
-
-
-def _heuristic_facts(text: str, question: str, k: int = 3) -> List[str]:
+def _heuristic_facts(text: str, question: str, k: int = 3) -> List[dict]:
     terms = [w for w in re.findall(r"[a-z0-9]{3,}", (question or "").lower())][:12]
-    sents = _sentences(text)
+    parts = re.split(r"(?<=[.!?])\s+|\n+", text or "")
+    sents = [p.strip() for p in parts if len(p.strip()) > 30]
     if not terms:
-        return [_clip(s, 240) for s in sents[:k]]
+        return [{"chunk_id": 0, "quote": _clip(s, 240)} for s in sents[:k]]
     scored = []
     for i, s in enumerate(sents):
         low = s.lower()
@@ -121,16 +125,24 @@ def _heuristic_facts(text: str, question: str, k: int = 3) -> List[str]:
         if sc:
             scored.append((sc, i, s))
     scored.sort(key=lambda x: (-x[0], x[1]))
-    return [_clip(s, 240) for _sc, _i, s in scored[:k]]
+    return [{"chunk_id": 0, "quote": _clip(s, 240)} for _sc, _i, s in scored[:k]]
 
 
-def _distill(text: str, question: str, url: str, title: str) -> dict:
-    text = (text or "").strip()
-    if not text:
-        return {"relevant": False, "facts": [], "backend": "empty"}
-    fallback = _heuristic_facts(text, question, 3)
+def _distill_batch(chunks: List[str], question: str, url: str, title: str) -> List[str]:
+    if not chunks:
+        return []
+    
     if not _distill_enabled():
-        return {"relevant": bool(fallback), "facts": fallback, "backend": "heuristic"}
+        facts = []
+        for i, ch in enumerate(chunks):
+            for f in _heuristic_facts(ch, question, 1):
+                f["chunk_id"] = i
+                facts.append(f)
+        return [f["quote"] for f in facts]
+
+    # Format chunks with IDs
+    chunk_text = "\n\n".join(f"[{i}] {ch}" for i, ch in enumerate(chunks))
+    
     try:
         from providers import get_provider
         provider = get_provider()
@@ -139,24 +151,42 @@ def _distill(text: str, question: str, url: str, title: str) -> dict:
             messages=[
                 {"role": "system", "content": _DISTILL_SYSTEM},
                 {"role": "user", "content":
-                    "QUESTION: " + question + "\nURL: " + url +
-                    "\nTITLE: " + (title or "") + "\n\nPAGE:\n" + text[:6000]},
+                    f"QUESTION: {question}\nURL: {url}\nTITLE: {title or ''}\n\n"
+                    f"PAGE CHUNKS:\n{chunk_text}\n\n"
+                    "Return JSON matching the schema. For each fact, provide the chunk_id "
+                    "and a verbatim quote from that chunk."},
             ],
             tools=None,
             model=model,
             format=_SCHEMA,
         )
         d = _parse_json(r.get("content") or "")
-        if isinstance(d, dict):
-            facts = [str(x).strip() for x in (d.get("facts") or []) if str(x).strip()]
-            if facts:
-                return {"relevant": bool(d.get("relevant", True)),
-                        "facts": facts[:4], "backend": "model"}
+        if isinstance(d, dict) and isinstance(d.get("facts"), list):
+            verified = []
+            for f in d["facts"]:
+                if not isinstance(f, dict):
+                    continue
+                cid = f.get("chunk_id")
+                quote = f.get("quote")
+                if isinstance(cid, int) and 0 <= cid < len(chunks) and isinstance(quote, str):
+                    # Substring check to prevent hallucinations
+                    clean_quote = quote.strip()
+                    if clean_quote and clean_quote in chunks[cid]:
+                        verified.append(clean_quote)
+            if verified:
+                return verified
             if d.get("relevant") is False:
-                return {"relevant": False, "facts": [], "backend": "model"}
+                return []
     except Exception:
         pass
-    return {"relevant": bool(fallback), "facts": fallback, "backend": "heuristic"}
+
+    # Fallback to heuristic if model fails
+    facts = []
+    for i, ch in enumerate(chunks):
+        for f in _heuristic_facts(ch, question, 1):
+            f["chunk_id"] = i
+            facts.append(f)
+    return [f["quote"] for f in facts]
 
 
 def _build(header: str, rows: List[dict], sources: List[str]) -> str:
@@ -219,14 +249,10 @@ def deep_search(query: str, max_pages: int = 0) -> str:
             rows.append({"head": head + " - unreadable (" + str(pg.get("error")) + ")", "facts": []})
             sources.append("[" + str(i) + "] " + res["url"])
             continue
-        chs = page_cache.rank(page_cache.chunk(pg["text"]), q, top=2)
-        facts = []
-        for ch in chs:
-            d = _distill(ch, q, res["url"], res.get("title", ""))
-            if d.get("relevant"):
-                facts.extend(d["facts"])
-            if len(facts) >= 4:
-                break
+            
+        chunks = page_cache.rank(page_cache.chunk(pg["text"]), q, top=3)
+        facts = _distill_batch(chunks, q, res["url"], res.get("title", ""))
+        
         if facts:
             findings += len(facts)
             rows.append({"head": head, "facts": facts[:4]})
@@ -251,14 +277,10 @@ def read_page(url: str, question: str = "") -> str:
     pg = page_cache.get(u)
     if not pg.get("ok"):
         return "read_page: could not read " + u + " (" + str(pg.get("error")) + ")"
-    chs = page_cache.rank(page_cache.chunk(pg["text"]), q, top=3)
-    facts = []
-    for ch in chs:
-        d = _distill(ch, q, u, pg.get("title", ""))
-        if d.get("relevant"):
-            facts.extend(d["facts"])
-        if len(facts) >= 5:
-            break
+        
+    chunks = page_cache.rank(page_cache.chunk(pg["text"]), q, top=3)
+    facts = _distill_batch(chunks, q, u, pg.get("title", ""))
+    
     if not facts:
         return "read_page: " + u + " loaded (" + str(pg.get("backend")) + ") but nothing relevant to " + repr(q)
     head = "[1] " + (pg.get("title") or _domain(u) or u) + " (" + _domain(u) + ")"
