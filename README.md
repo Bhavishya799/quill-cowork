@@ -1,4 +1,7 @@
-<img width="1919" height="991" alt="Screenshot 2026-09-24 212226" src="https://github.com/user-attachments/assets/051b19ec-1534-4366-b5a9-cbd553399417" />
+
+
+https://github.com/user-attachments/assets/24f19adf-991f-48fa-bd47-f047dffd6274
+
 # Quill-Cowork
 
 A local-first, hybrid Python/Rust agentic AI assistant. Runs entirely on consumer hardware. 
