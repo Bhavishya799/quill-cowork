@@ -15,6 +15,7 @@ GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
 GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/calendar.events",
 ]
 
 VAULT_KEYS = {

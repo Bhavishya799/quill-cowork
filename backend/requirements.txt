@@ -13,3 +13,7 @@ pyttsx3>=2.90
 trafilatura>=1.9.0
 mcp>=2.0.0
 websift>=0.1.0
+
+keyboard>=0.13.5
+pillow>=10.0.0
+requests>=2.31.0

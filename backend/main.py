@@ -33,6 +33,7 @@ import grants as grants_mod
 import chat_store
 import memory
 import mcp_client
+import email_watcher
 
 # --- Rust Bridge Integration ---
 import quill_rust
@@ -178,6 +179,7 @@ async def lifespan(app: FastAPI):
         print(f"mcp: {n_mcp} tools registered")
     print(f"quill: {len(list_tools())} tools, {len(get_connectors())} connectors")
     print(f"auth: {'enabled' if auth.is_enabled() else 'disabled (no password set)'}")
+    asyncio.create_task(email_watcher.check_inbox())
     _print_search_status()
     yield
     monitor.stop()
@@ -503,6 +505,51 @@ async def memory_remember(req: MemoryRememberRequest):
     ok = memory.remember(req.chat_id, req.role, req.text)
     return {"ok": ok}
 
+
+class VisionRequest(BaseModel):
+    prompt: str
+    image_b64: str
+
+@app.post("/quick_vision")
+async def quick_vision(req: VisionRequest):
+    vision_model = os.getenv("VISION_MODEL", "moondream")
+    
+    messages = [
+        {
+            "role": "user",
+            "content": req.prompt,
+            "images": [req.image_b64]
+        }
+    ]
+    
+    system_prompt = (
+        "You are Quill Vision. Answer the user's question based on the screenshot. "
+        "If the user says 'save this' or 'remember this', you must output ONLY the text "
+        "you want saved, wrapped in [SAVE: ... ] and also output [ITEM SAVED]."
+    )
+    messages.insert(0, {"role": "system", "content": system_prompt})
+
+    try:
+        import ollama
+        client = ollama.Client(host=os.getenv("OLLAMA_HOST", "http://localhost:11434"))
+        resp = client.chat(model=vision_model, messages=messages, stream=False)
+        reply = resp["message"]["content"]
+        
+        if "[ITEM SAVED]" in reply:
+            import re
+            match = re.search(r"\[SAVE:\s*(.*?)\]", reply, re.DOTALL)
+            if match:
+                text_to_save = match.group(1).strip()
+                try:
+                    import memory
+                    memory.remember("quick_vision", "user", text_to_save)
+                except Exception:
+                    pass
+            return {"reply": "ITEM SAVED", "saved": True}
+            
+        return {"reply": reply, "saved": False}
+    except Exception as e:
+        return {"reply": f"Vision error: {e}", "saved": False}
 
 @app.get("/tools")
 async def list_all_tools():

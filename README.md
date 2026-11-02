@@ -64,3 +64,20 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
+
+## FAQ
+
+**Q: Does Quill-Cowork send data to the cloud?**
+A: No. Everything runs locally on your machine. The AI models run via Ollama on your local GPU/CPU. No accounts, no servers, no telemetry. Your files, emails, and credentials never leave your computer.
+
+**Q: What is the advantage of the Rust core?**
+A: The Rust binary (`quill_core`) handles heavy I/O, codebase indexing, and tool routing. This offloads string parsing and regex matching from Python to a compiled language, making file operations and message routing near-instant.
+
+**Q: Can I use this on an 8GB GPU?**
+A: Yes. Quill-Cowork is optimized for 8GB cards (like the RX 7600 or RTX 3060). By using `q8_0` KV cache quantization and Flash Attention, you can run a 16K context window comfortably.
+
+**Q: How does the calendar automation work?**
+A: A background Python daemon watches your Gmail every 60 seconds. If it detects an email with a meeting time, it uses a local AI model to extract the details, creates a Google Calendar event, and replies to the email confirming the action.
+
+**Q: Is this safe to use?**
+A: The app runs an abliterated (uncensored) model and has access to your filesystem, email, and GitHub. It is designed for single-user, trusted-machine use. Never expose it to the public internet without enabling the built-in web auth (L11).
